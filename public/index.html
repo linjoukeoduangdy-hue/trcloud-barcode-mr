@@ -634,8 +634,7 @@ document.getElementById("submit-btn").addEventListener("click", async () => {
 
     if (resp.ok && data.success === 1) {
       showModal(true, "ເບີກສິນຄ້າສຳເລັດ", data.message || JSON.stringify(data));
-      cart = [];
-      renderCart();
+      resetFormForNextDocument();
     } else {
       showModal(false, "ສົ່ງບໍ່ສຳເລັດ", data.message || data.error || JSON.stringify(data));
     }
@@ -646,6 +645,19 @@ document.getElementById("submit-btn").addEventListener("click", async () => {
     submitBtn.disabled = cart.length === 0;
   }
 });
+
+function resetFormForNextDocument() {
+  cart = [];
+  renderCart();
+  document.getElementById("f-name").value = "";
+  document.getElementById("f-request-by").value = "";
+  document.getElementById("f-purpose").value = "";
+  const feedback = document.getElementById("scan-feedback");
+  if (feedback) {
+    feedback.textContent = "";
+    feedback.className = "";
+  }
+}
 
 function showModal(ok, title, detail) {
   document.getElementById("modal-icon").textContent = ok ? "✅" : "⚠️";
