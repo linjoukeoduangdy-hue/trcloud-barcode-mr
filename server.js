@@ -4,6 +4,7 @@
 
 import express from "express";
 import crypto from "crypto";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -16,18 +17,135 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 3000;
 
-// ---------------- Warehouse list ----------------
-// ລາຍຊື່ຄັງ (warehouse) ຕ້ອງພິມໃຫ້ "ກົງກັບໃນ TRCloud ຮ້ອຍເປີເຊັນ" (ໂຕພິມນ້ອຍ/ໃຫຍ່, ວັນນະຍຸດ)
-// ເອົາຊື່ຈາກ dropdown "ຄັງສິນຄ້າ" ໃນໜ້າ TRCloud > ເບີກສິນຄ້າ/ວັດຖຸດິບ > General ມາໃສ່ຢູ່ນີ້
-// ຖ້າຢາກແກ້ໄວອອນລາຍ ໂດຍບໍ່ຕ້ອງແກ້ໂຄ້ດ, ຕັ້ງ env var TRCLOUD_WAREHOUSES ເປັນລາຍການຄັ່ນດ້ວຍ , ແທນ
-const DEFAULT_WAREHOUSES = ["ເຊໂປນ"];
-const WAREHOUSES = process.env.TRCLOUD_WAREHOUSES
-  ? process.env.TRCLOUD_WAREHOUSES.split(",").map((w) => w.trim()).filter(Boolean)
-  : DEFAULT_WAREHOUSES;
+// =================================================================
+// ---------------- Dropdown option lists (ແກ້ໄດ້ຜ່ານໜ້າ /admin.html) ----------------
+// ຄ່າໃນນີ້ຕ້ອງພິມໃຫ້ "ກົງກັບໃນ TRCloud ຮ້ອຍເປີເຊັນ" (ໂຕພິມນ້ອຍ/ໃຫຍ່, ວັນນະຍຸດ, ຂີດກາງ)
+// ຄັ້ງທຳອິດທີ່ເປີດ server ຄ່າຈະຖືກສ້າງຈາກ DEFAULT_* ຫລື env var ຂ້າງລຸ່ມ ແລ້ວບັນທຶກລົງໄຟລ໌
+// options-store.json ໄວ້, ຈາກນັ້ນໄປແກ້ໄຂ/ເພີ່ມໄດ້ຈາກໜ້າ /admin.html ໂດຍກົງ ບໍ່ຕ້ອງແກ້ໂຄ້ດອີກ
+// =================================================================
+const OPTIONS_FILE = path.join(__dirname, "options-store.json");
 
-app.get("/api/warehouses", (req, res) => {
-  res.status(200).json({ warehouses: WAREHOUSES });
+const DEFAULT_OPTIONS = {
+  warehouses: parseListEnv(process.env.TRCLOUD_WAREHOUSES, ["ເຊໂປນ"]),
+  departments: parseListEnv(process.env.TRCLOUD_DEPARTMENTS, ["ໂຄງການເຊໂປນ-ແທ່ງຄຳແລແໜ"]),
+  projects: parseListEnv(process.env.TRCLOUD_PROJECTS, ["TN-654_ງານຊ່ອມບຳລຸງ"]),
+  salesmen: parseListEnv(process.env.TRCLOUD_SALESMEN, ["Linju_Keoduangdy"]),
+  accounting_formulas: parseListEnv(process.env.TRCLOUD_ACCOUNTING_FORMULAS, ["mr"]),
+};
+
+function parseListEnv(envVal, fallback) {
+  return envVal
+    ? envVal.split(",").map((w) => w.trim()).filter(Boolean)
+    : fallback;
+}
+
+function loadOptions() {
+  try {
+    const raw = fs.readFileSync(OPTIONS_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    // ผสานกับ DEFAULT_OPTIONS เผื่อไฟล์เก่าขาดคีย์ใหม่ (เช่น accounting_formulas ที่เพิ่งเพิ่ม)
+    return { ...DEFAULT_OPTIONS, ...parsed };
+  } catch {
+    return { ...DEFAULT_OPTIONS };
+  }
+}
+
+function saveOptions(options) {
+  fs.writeFileSync(OPTIONS_FILE, JSON.stringify(options, null, 2), "utf8");
+}
+
+let OPTIONS = loadOptions();
+saveOptions(OPTIONS); // ให้แน่ใจว่าไฟล์มีอยู่ตั้งแต่แรกเริ่ม
+
+// ADMIN_KEY: กันไม่ให้ใครก็ได้เข้ามาแก้ dropdown ได้ผ่าน /admin.html
+// ตั้ง env var ADMIN_KEY ใน Render เป็นรหัสที่เจ้าเลือกเอง แล้วใช้รหัสเดียวกันตอนล็อกอินหน้า admin
+const ADMIN_KEY = process.env.ADMIN_KEY || "changeme";
+
+function checkAdminKey(req, res, next) {
+  const key = req.headers["x-admin-key"] || "";
+  if (key !== ADMIN_KEY) {
+    return res.status(401).json({ error: "ລະຫັດ admin ບໍ່ຖືກຕ້ອງ" });
+  }
+  next();
+}
+
+app.get("/api/form-options", (req, res) => {
+  res.status(200).json(OPTIONS);
 });
+
+app.get("/api/admin/options", checkAdminKey, (req, res) => {
+  res.status(200).json(OPTIONS);
+});
+
+app.post("/api/admin/options", checkAdminKey, (req, res) => {
+  const body = req.body || {};
+  const fields = ["warehouses", "departments", "projects", "salesmen", "accounting_formulas"];
+  const next = { ...OPTIONS };
+
+  for (const field of fields) {
+    if (Array.isArray(body[field])) {
+      next[field] = body[field]
+        .map((v) => String(v).trim())
+        .filter(Boolean);
+    }
+  }
+
+  try {
+    saveOptions(next);
+    OPTIONS = next;
+    return res.status(200).json({ success: true, options: OPTIONS });
+  } catch (err) {
+    return res.status(500).json({ error: `ບັນທຶກບໍ່ສຳເລັດ: ${err.message}` });
+  }
+});
+
+// =================================================================
+// ---------------- ເລກທີ MR (document_number) ----------------
+// ຮູບແບບ: YYMMDD + ເລກແລ່ນຕໍ່ພາຍໃນມື້ນັ້ນ (ຣີເຊັດເປັນ 01 ທຸກມື້ໃໝ່) ເຊັ່ນ 26091601, 26091602, ...
+// ໝາຍເຫດ: ນັບຕໍ່ຈາກໄຟລ໌ mr-counter.json ຢູ່ໃນ server — ຖ້າ Render redeploy ໂຄ້ດໃໝ່
+// (ບໍ່ແມ່ນແຄ່ sleep/wake ທຳມະດາ) ໄຟລ໌ນີ້ອາດຖືກລ້າງ ແລະ ນັບເລີ່ມ 01 ຄືນອີກໃນມື້ນັ້ນ
+// =================================================================
+const COUNTER_FILE = path.join(__dirname, "mr-counter.json");
+
+function loadCounterState() {
+  try {
+    const raw = fs.readFileSync(COUNTER_FILE, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return { date: "", count: 0 };
+  }
+}
+
+function saveCounterState(state) {
+  try {
+    fs.writeFileSync(COUNTER_FILE, JSON.stringify(state), "utf8");
+  } catch (err) {
+    console.error("[counter] ບັນທຶກໄຟລ໌ຕົວນັບບໍ່ສຳເລັດ:", err.message);
+  }
+}
+
+function generateDocumentNumber() {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const dateKey = `${yy}${mm}${dd}`;
+
+  const state = loadCounterState();
+  if (state.date !== dateKey) {
+    state.date = dateKey;
+    state.count = 0;
+  }
+  state.count += 1;
+  saveCounterState(state);
+
+  const seq = String(state.count).padStart(2, "0");
+  return `${dateKey}${seq}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const TRCLOUD_SEARCH_ENDPOINT =
   "https://thaidrill.trcloud.co/application/api-connector/end-point/engine-inventory/search-inventory.php";
@@ -37,19 +155,6 @@ const TRCLOUD_MR_ENDPOINT =
 function buildSecureKey(encryptHead, timestamp) {
   const raw = `${encryptHead}t${timestamp}`;
   return crypto.createHash("md5").update(raw).digest("hex");
-}
-
-function generateDocumentNumber() {
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const rand = Math.floor(Math.random() * 1000000).toString().padStart(6, "0");
-  return `${yy}${mm}${dd}${rand}`;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -158,7 +263,16 @@ app.get("/api/lookup", async (req, res) => {
 
 // ---------------- POST /api/submit-mr ----------------
 app.post("/api/submit-mr", async (req, res) => {
-  const { items, warehouse, request_by, purpose, department } = req.body || {};
+  const {
+    items,
+    warehouse,
+    request_by,
+    purpose,
+    department,
+    project,
+    salesman,
+    accounting_formula,
+  } = req.body || {};
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "ไม่มีรายการสินค้าในตะกร้า" });
@@ -179,21 +293,21 @@ app.post("/api/submit-mr", async (req, res) => {
     passkey: process.env.TRCLOUD_PASSKEY,
     securekey: secureKey,
     timestamp,
-    accounting_formula: "mr",
+    accounting_formula: accounting_formula || "mr",
     gl_entry: "yes",
     date: today,
     contact_id: "0",
     company_format: "MR",
     document_number: generateDocumentNumber(),
-    status: "",
+    status: "ขนส่งเสร็จสิ้น",
     request_by: request_by || "",
     purpose: purpose || "",
     client_name: "",
     client_telephone: "",
     description: "",
-    salesman: "",
+    salesman: salesman || "",
     department: department || "",
-    project: "",
+    project: project || "",
     warehouse: warehouse || "",
     url: "",
     approve_status: "",
