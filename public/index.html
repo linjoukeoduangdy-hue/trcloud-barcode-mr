@@ -1,1 +1,649 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<title>ตัดสต๊อก · TRCloud</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #14181c;
+    --panel: #1c2126;
+    --panel-2: #232a31;
+    --line: #303941;
+    --text: #e9edf1;
+    --text-dim: #8b98a3;
+    --amber: #f2b705;
+    --amber-dim: #7a5e02;
+    --green: #3fbf6f;
+    --red: #e6584b;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    height: 100%;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  header .sub {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 16px;
+    padding-bottom: 140px; /* กันโดน sticky bar ทับ */
+  }
+
+  /* ---------- Scan panel ---------- */
+  .scan-panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .scan-tabs {
+    display: flex;
+  }
+
+  .scan-tab {
+    flex: 1;
+    padding: 12px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    background: var(--panel-2);
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+
+  .scan-tab.active {
+    color: var(--amber);
+    border-bottom-color: var(--amber);
+    background: var(--panel);
+  }
+
+  .scan-body { padding: 16px; }
+
+  #camera-view {
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    min-height: 220px;
+  }
+
+  .usb-hint {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    line-height: 1.5;
+  }
+
+  #usb-input {
+    width: 100%;
+    padding: 16px;
+    font-size: 20px;
+    font-family: var(--mono);
+    background: var(--bg);
+    border: 2px solid var(--amber-dim);
+    border-radius: 8px;
+    color: var(--text);
+    outline: none;
+  }
+
+  #usb-input:focus {
+    border-color: var(--amber);
+  }
+
+  .hidden { display: none !important; }
+
+  /* ---------- Scan feedback toast ---------- */
+  #scan-feedback {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: var(--mono);
+    display: none;
+  }
+  #scan-feedback.show { display: block; }
+  #scan-feedback.ok { background: rgba(63,191,111,0.12); color: var(--green); border: 1px solid rgba(63,191,111,0.3); }
+  #scan-feedback.err { background: rgba(230,88,75,0.12); color: var(--red); border: 1px solid rgba(230,88,75,0.3); }
+
+  /* ---------- Cart ---------- */
+  .cart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 4px;
+  }
+
+  .cart-header h2 {
+    font-size: 14px;
+    text-transform: none;
+    color: var(--text-dim);
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .cart-count {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--amber);
+  }
+
+  .cart-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 14px;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+  }
+
+  .cart-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+
+  .cart-item .info { flex: 1; min-width: 0; }
+
+  .cart-item .sku {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--amber);
+  }
+
+  .cart-item .name {
+    font-size: 14px;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .qty-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .qty-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--text);
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .qty-val {
+    min-width: 28px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 15px;
+  }
+
+  .remove-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 6px;
+  }
+  .remove-btn:hover { color: var(--red); }
+
+  /* ---------- Header info form ---------- */
+  .info-form {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .info-form label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+
+  .info-form input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+  }
+  .info-form input:focus { border-color: var(--amber); }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  /* ---------- Sticky submit bar ---------- */
+  .submit-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--panel-2);
+    border-top: 1px solid var(--line);
+    padding: 14px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .submit-bar .total {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .submit-btn {
+    flex: 1;
+    padding: 14px;
+    border-radius: 8px;
+    border: none;
+    background: var(--amber);
+    color: #1a1400;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  .submit-btn:disabled {
+    background: var(--line);
+    color: var(--text-dim);
+    cursor: not-allowed;
+  }
+
+  /* ---------- Result modal ---------- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 100;
+  }
+  .modal-overlay.show { display: flex; }
+
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 360px;
+    width: 100%;
+    text-align: center;
+  }
+
+  .modal .icon { font-size: 40px; margin-bottom: 8px; }
+  .modal h3 { margin: 0 0 8px; font-size: 17px; }
+  .modal p { margin: 0 0 18px; font-size: 13px; color: var(--text-dim); font-family: var(--mono); word-break: break-word; }
+
+  .modal button {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    background: var(--amber);
+    color: #1a1400;
+    font-weight: 700;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ຕັດສະຕ໊ອກດ້ວຍບາໂຄດ</h1>
+  <span class="sub">TRCloud MR</span>
+</header>
+
+<main>
+  <div class="scan-panel">
+    <div class="scan-tabs">
+      <button class="scan-tab active" data-mode="camera">📷 ກ້ອງ</button>
+      <button class="scan-tab" data-mode="usb">⌨️ ເຄື່ອງຍິງ USB</button>
+    </div>
+    <div class="scan-body">
+      <div id="camera-mode">
+        <div id="camera-view"></div>
+      </div>
+      <div id="usb-mode" class="hidden">
+        <div class="usb-hint">ຍິງບາໂຄດດ້ວຍເຄື່ອງຍິງ USB ໄດ້ເລີຍ (ຊ່ອງນີ້ຮັບຄ່າອັດຕະໂນມັດ) ຫລືພິມ SKU ແລ້ວກົດ Enter</div>
+        <input id="usb-input" type="text" placeholder="ຍິງ ຫລື ພິມ SKU..." autocomplete="off" />
+      </div>
+      <div id="scan-feedback"></div>
+    </div>
+  </div>
+
+  <div class="info-form">
+    <div class="form-row">
+      <div>
+        <label>ຜູ້ເບີກ (request_by)</label>
+        <input id="f-request-by" type="text" placeholder="ຊື່ຜູ້ເບີກ" />
+      </div>
+      <div>
+        <label>ຄັງສິນຄ້າ (warehouse)</label>
+        <input id="f-warehouse" type="text" placeholder="ຄັງ" />
+      </div>
+    </div>
+    <div>
+      <label>ຈຸດປະສົງ (purpose)</label>
+      <input id="f-purpose" type="text" placeholder="ເຊັ່ນ: ນຳໄປໃຊ້ໜ້າງານ..." />
+    </div>
+  </div>
+
+  <div class="cart-section">
+    <div class="cart-header">
+      <h2>ລາຍການທີ່ຈະເບີກ</h2>
+      <span class="cart-count" id="cart-count">0 ລາຍການ</span>
+    </div>
+    <div id="cart-list" style="margin-top:10px;">
+      <div class="cart-empty" id="cart-empty">ຍັງບໍ່ມີລາຍການ — ເລີ່ມຍິງບາໂຄດເບື້ອງເທິງ</div>
+    </div>
+  </div>
+</main>
+
+<div class="submit-bar">
+  <span class="total" id="submit-total">0 ລາຍການ</span>
+  <button class="submit-btn" id="submit-btn" disabled>ຢືນຢັນເບີກສິນຄ້າ</button>
+</div>
+
+<div class="modal-overlay" id="result-modal">
+  <div class="modal">
+    <div class="icon" id="modal-icon">✅</div>
+    <h3 id="modal-title">ສຳເລັດ</h3>
+    <p id="modal-detail"></p>
+    <button id="modal-close">ປິດ</button>
+  </div>
+</div>
+
+<script>
+// ---------------- State ----------------
+let cart = []; // { product_id, product_name, quantity, unit }
+
+// ---------------- Tab switching ----------------
+const tabs = document.querySelectorAll(".scan-tab");
+const cameraMode = document.getElementById("camera-mode");
+const usbMode = document.getElementById("usb-mode");
+const usbInput = document.getElementById("usb-input");
+let html5QrCode = null;
+
+tabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    tabs.forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    const mode = tab.dataset.mode;
+    if (mode === "camera") {
+      cameraMode.classList.remove("hidden");
+      usbMode.classList.add("hidden");
+      startCamera();
+    } else {
+      usbMode.classList.remove("hidden");
+      cameraMode.classList.add("hidden");
+      stopCamera();
+      usbInput.focus();
+    }
+  });
+});
+
+// ---------------- Camera scanning ----------------
+function startCamera() {
+  if (html5QrCode) return;
+  html5QrCode = new Html5Qrcode("camera-view");
+  html5QrCode
+    .start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 260, height: 140 } },
+      (decodedText) => {
+        handleScan(decodedText);
+      },
+      () => {} // เพิกเฉย error ระหว่างสแกน (ยังไม่เจอโค้ด)
+    )
+    .catch((err) => {
+      showFeedback("err", "ເປີດກ້ອງບໍ່ສຳເລັດ: " + err);
+    });
+}
+
+function stopCamera() {
+  if (html5QrCode) {
+    html5QrCode.stop().catch(() => {});
+    html5QrCode.clear();
+    html5QrCode = null;
+  }
+}
+
+// ---------------- USB scanner (keyboard wedge) ----------------
+usbInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const value = usbInput.value.trim();
+    usbInput.value = "";
+    if (value) handleScan(value);
+  }
+});
+
+// ---------------- Handle a scanned code ----------------
+let scanning = false;
+async function handleScan(code) {
+  if (scanning) return; // กันยิงซ้ำรัว ๆ ระหว่างรอ lookup
+  scanning = true;
+  showFeedback("ok", `ກຳລັງກວດ "${code}" ...`);
+
+  try {
+    const resp = await fetch(`/api/lookup?sku=${encodeURIComponent(code)}`);
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      showFeedback("err", data.error || "ບໍ່ພົບສິນຄ້າ");
+    } else {
+      addToCart(data);
+      showFeedback("ok", `✓ ${data.product_id} — ${data.product_name}`);
+    }
+  } catch (err) {
+    showFeedback("err", "ເຊື່ອມຕໍ່ບໍ່ສຳເລັດ: " + err.message);
+  } finally {
+    setTimeout(() => { scanning = false; }, 400);
+  }
+}
+
+function showFeedback(type, message) {
+  const el = document.getElementById("scan-feedback");
+  el.textContent = message;
+  el.className = `show ${type}`;
+}
+
+// ---------------- Cart management ----------------
+function addToCart(product) {
+  const existing = cart.find((it) => it.product_id === product.product_id);
+  if (existing) {
+    existing.quantity += 1;
+  } else {
+    cart.push({
+      product_id: product.product_id,
+      product_name: product.product_name,
+      unit: product.unit,
+      quantity: 1,
+    });
+  }
+  renderCart();
+}
+
+function changeQty(productId, delta) {
+  const item = cart.find((it) => it.product_id === productId);
+  if (!item) return;
+  item.quantity += delta;
+  if (item.quantity <= 0) {
+    cart = cart.filter((it) => it.product_id !== productId);
+  }
+  renderCart();
+}
+
+function removeItem(productId) {
+  cart = cart.filter((it) => it.product_id !== productId);
+  renderCart();
+}
+
+function renderCart() {
+  const list = document.getElementById("cart-list");
+  const empty = document.getElementById("cart-empty");
+  const count = document.getElementById("cart-count");
+  const submitBtn = document.getElementById("submit-btn");
+  const submitTotal = document.getElementById("submit-total");
+
+  count.textContent = `${cart.length} ລາຍການ`;
+  submitTotal.textContent = `${cart.length} ລາຍການ`;
+  submitBtn.disabled = cart.length === 0;
+
+  if (cart.length === 0) {
+    list.innerHTML = "";
+    list.appendChild(empty);
+    return;
+  }
+
+  list.innerHTML = "";
+  cart.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "cart-item";
+    row.innerHTML = `
+      <div class="info">
+        <div class="sku">${item.product_id}</div>
+        <div class="name">${item.product_name}</div>
+      </div>
+      <div class="qty-control">
+        <button class="qty-btn" data-action="dec" data-id="${item.product_id}">−</button>
+        <span class="qty-val">${item.quantity}</span>
+        <button class="qty-btn" data-action="inc" data-id="${item.product_id}">+</button>
+      </div>
+      <button class="remove-btn" data-action="remove" data-id="${item.product_id}">✕</button>
+    `;
+    list.appendChild(row);
+  });
+}
+
+document.getElementById("cart-list").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const action = btn.dataset.action;
+  if (action === "inc") changeQty(id, 1);
+  if (action === "dec") changeQty(id, -1);
+  if (action === "remove") removeItem(id);
+});
+
+// ---------------- Submit ----------------
+document.getElementById("submit-btn").addEventListener("click", async () => {
+  const submitBtn = document.getElementById("submit-btn");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "ກຳລັງສົ່ງ...";
+
+  const payload = {
+    items: cart,
+    request_by: document.getElementById("f-request-by").value,
+    warehouse: document.getElementById("f-warehouse").value,
+    purpose: document.getElementById("f-purpose").value,
+  };
+
+  try {
+    const resp = await fetch("/api/submit-mr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.success === 1) {
+      showModal(true, "ເບີກສິນຄ້າສຳເລັດ", data.message || JSON.stringify(data));
+      cart = [];
+      renderCart();
+    } else {
+      showModal(false, "ສົ່ງບໍ່ສຳເລັດ", data.message || data.error || JSON.stringify(data));
+    }
+  } catch (err) {
+    showModal(false, "ເຊື່ອມຕໍ່ບໍ່ສຳເລັດ", err.message);
+  } finally {
+    submitBtn.textContent = "ຢືນຢັນເບີກສິນຄ້າ";
+    submitBtn.disabled = cart.length === 0;
+  }
+});
+
+function showModal(ok, title, detail) {
+  document.getElementById("modal-icon").textContent = ok ? "✅" : "⚠️";
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-detail").textContent = detail;
+  document.getElementById("result-modal").classList.add("show");
+}
+document.getElementById("modal-close").addEventListener("click", () => {
+  document.getElementById("result-modal").classList.remove("show");
+});
+
+// ---------------- Init ----------------
+startCamera();
+</script>
+
+</body>
+</html>
 
