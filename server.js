@@ -26,11 +26,11 @@ const PORT = process.env.PORT || 3000;
 const OPTIONS_FILE = path.join(__dirname, "options-store.json");
 
 const DEFAULT_OPTIONS = {
-  warehouses: parseListEnv(process.env.TRCLOUD_WAREHOUSES, ["ເຊໂປນ"]),
-  departments: parseListEnv(process.env.TRCLOUD_DEPARTMENTS, ["ໂຄງການເຊໂປນ-ແທ່ງຄຳແລແໜ"]),
-  projects: parseListEnv(process.env.TRCLOUD_PROJECTS, ["TN-654_ງານຊ່ອມບຳລຸງ"]),
-  salesmen: parseListEnv(process.env.TRCLOUD_SALESMEN, ["Linju_Keoduangdy"]),
-  accounting_formulas: parseListEnv(process.env.TRCLOUD_ACCOUNTING_FORMULAS, ["mr"]),
+  warehouses: parseListEnv(process.env.TRCLOUD_WAREHOUSES, ["คลังเซโปน"]),
+  departments: parseListEnv(process.env.TRCLOUD_DEPARTMENTS, [""]),
+  projects: parseListEnv(process.env.TRCLOUD_PROJECTS, ["โครงการเซโปน-แท่งคำและนาลู"]),
+  salesmen: parseListEnv(process.env.TRCLOUD_SALESMEN, [""]),
+  accounting_formulas: parseListEnv(process.env.TRCLOUD_ACCOUNTING_FORMULAS, [""]),
 };
 
 function parseListEnv(envVal, fallback) {
