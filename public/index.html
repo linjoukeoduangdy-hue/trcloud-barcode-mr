@@ -259,7 +259,8 @@
     margin-bottom: 4px;
   }
 
-  .info-form input {
+  .info-form input,
+  .info-form select {
     width: 100%;
     padding: 10px 12px;
     background: var(--bg);
@@ -269,7 +270,8 @@
     font-size: 14px;
     outline: none;
   }
-  .info-form input:focus { border-color: var(--amber); }
+  .info-form input:focus,
+  .info-form select:focus { border-color: var(--amber); }
 
   .form-row {
     display: grid;
@@ -388,7 +390,9 @@
       </div>
       <div>
         <label>ຄັງສິນຄ້າ (warehouse)</label>
-        <input id="f-warehouse" type="text" placeholder="ຄັງ" />
+        <select id="f-warehouse">
+          <option value="">-- ກຳລັງໂຫລດລາຍຊື່ຄັງ... --</option>
+        </select>
       </div>
     </div>
     <div>
@@ -644,7 +648,36 @@ document.getElementById("modal-close").addEventListener("click", () => {
   document.getElementById("result-modal").classList.remove("show");
 });
 
+// ---------------- Warehouse dropdown ----------------
+async function loadWarehouses() {
+  const select = document.getElementById("f-warehouse");
+  try {
+    const resp = await fetch("/api/warehouses");
+    const data = await resp.json();
+    const list = Array.isArray(data.warehouses) ? data.warehouses : [];
+
+    select.innerHTML = "";
+    if (list.length === 0) {
+      select.innerHTML = `<option value="">-- ບໍ່ພົບຄັງໃນລະບົບ --</option>`;
+      return;
+    }
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "-- ເລືອກຄັງ --";
+    select.appendChild(placeholder);
+    list.forEach((name) => {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      select.appendChild(opt);
+    });
+  } catch (err) {
+    select.innerHTML = `<option value="">-- ໂຫລດລາຍຊື່ຄັງບໍ່ສຳເລັດ --</option>`;
+  }
+}
+
 // ---------------- Init ----------------
+loadWarehouses();
 startCamera();
 </script>
 
