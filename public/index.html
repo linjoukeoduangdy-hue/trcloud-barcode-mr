@@ -466,14 +466,18 @@ function startCamera() {
     )
     .catch((err) => {
       showFeedback("err", "ເປີດກ້ອງບໍ່ສຳເລັດ: " + err);
+      html5QrCode = null;
     });
 }
 
 function stopCamera() {
   if (html5QrCode) {
-    html5QrCode.stop().catch(() => {});
-    html5QrCode.clear();
-    html5QrCode = null;
+    const instance = html5QrCode;
+    html5QrCode = null; // ປ່ອຍໄວ້ກ່ອນ ເພື່ອບໍ່ໃຫ້ startCamera() ຕິດ guard ຈາກ instance ເກົ່າ
+    instance
+      .stop()
+      .then(() => instance.clear())
+      .catch(() => {}); // ລໍ stop() ໃຫ້ແລ້ວກ່ອນ clear() ຈຶ່ງບໍ່ຂຶ້ນ "Cannot clear while scan is ongoing"
   }
 }
 
@@ -549,7 +553,6 @@ function removeItem(productId) {
 
 function renderCart() {
   const list = document.getElementById("cart-list");
-  const empty = document.getElementById("cart-empty");
   const count = document.getElementById("cart-count");
   const submitBtn = document.getElementById("submit-btn");
   const submitTotal = document.getElementById("submit-total");
@@ -559,8 +562,9 @@ function renderCart() {
   submitBtn.disabled = cart.length === 0;
 
   if (cart.length === 0) {
-    list.innerHTML = "";
-    list.appendChild(empty);
+    // ສ້າງ empty-state ຂຶ້ນໃໝ່ທຸກຄັ້ງ ແທນທີ່ຈະອີງໃສ່ node ເກົ່າທີ່ອາດຖືກລົບໄປແລ້ວ
+    // ໂດຍ innerHTML = "" ຄັ້ງກ່ອນໜ້າ (ນັ້ນຄືສາເຫດຂອງ appendChild(null) error)
+    list.innerHTML = `<div class="cart-empty" id="cart-empty">ຍັງບໍ່ມີລາຍການ — ເລີ່ມຍິງບາໂຄດເບື້ອງເທິງ</div>`;
     return;
   }
 
@@ -646,4 +650,3 @@ startCamera();
 
 </body>
 </html>
-
