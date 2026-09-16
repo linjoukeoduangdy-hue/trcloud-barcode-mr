@@ -59,6 +59,47 @@
     font-family: var(--mono);
   }
 
+  .net-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+  .net-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-dim); flex-shrink: 0;
+  }
+  .net-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .net-dot.offline { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .queue-badge {
+    background: var(--amber); color: #1a1400;
+    font-weight: 700; border-radius: 999px;
+    padding: 1px 8px; font-size: 11px;
+  }
+  .sync-now-btn {
+    margin-left: auto;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 10px; font-size: 11px; cursor: pointer;
+  }
+  .sync-now-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .unverified-tag { color: var(--amber); font-size: 11px; }
+
+  #toast {
+    position: fixed; bottom: 16px; left: 16px; right: 16px; max-width: 480px; margin: 0 auto;
+    padding: 12px 14px; border-radius: 8px; font-size: 13px;
+    display: none; text-align: center; z-index: 999;
+    border: 1px solid var(--line);
+  }
+  #toast.show { display: block; }
+  #toast.ok { background: rgba(63,191,111,0.15); color: var(--green); border-color: rgba(63,191,111,0.3); }
+  #toast.err { background: rgba(230,88,75,0.15); color: var(--red); border-color: rgba(230,88,75,0.3); }
+  #toast.info { background: var(--panel-2); color: var(--text); }
+
   main {
     flex: 1;
     display: flex;
@@ -375,6 +416,13 @@
   <span class="sub">TRCloud MR</span>
 </header>
 
+<div id="net-status" class="net-status">
+  <span id="net-dot" class="net-dot"></span>
+  <span id="net-text">ກຳລັງກວດສອບ...</span>
+  <span id="queue-badge" class="queue-badge hidden">0</span>
+  <button id="sync-now-btn" class="sync-now-btn hidden">ສົ່ງທີ່ຄ້າງໄວ້</button>
+</div>
+
 <main>
   <div class="scan-panel">
     <div class="scan-tabs">
@@ -433,6 +481,8 @@
     <button id="modal-close">ປິດ</button>
   </div>
 </div>
+
+<div id="toast"></div>
 
 <script>
 // ---------------- State ----------------
@@ -502,6 +552,27 @@ usbInput.addEventListener("keydown", (e) => {
   }
 });
 
+// ---------------- Local product cache (ສຳລັບໃຊ້ຕອນອອບລາຍ) ----------------
+const PRODUCT_CACHE_KEY = "trcloud-product-cache";
+
+function getProductCache() {
+  try {
+    return JSON.parse(localStorage.getItem(PRODUCT_CACHE_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function cacheProduct(product) {
+  try {
+    const cache = getProductCache();
+    cache[product.product_id] = product;
+    localStorage.setItem(PRODUCT_CACHE_KEY, JSON.stringify(cache));
+  } catch (err) {
+    console.error("[cache] ບັນທຶກແຄຊ໌ບໍ່ສຳເລັດ:", err.message);
+  }
+}
+
 // ---------------- Handle a scanned code ----------------
 let scanning = false;
 async function handleScan(code) {
@@ -516,11 +587,21 @@ async function handleScan(code) {
     if (!resp.ok) {
       showFeedback("err", data.error || "ບໍ່ພົບສິນຄ້າ");
     } else {
-      addToCart(data);
+      cacheProduct(data);
+      addToCart(data, true);
       showFeedback("ok", `✓ ${data.product_id} — ${data.product_name}`);
     }
   } catch (err) {
-    showFeedback("err", "ເຊື່ອມຕໍ່ບໍ່ສຳເລັດ: " + err.message);
+    // ເຊື່ອມຕໍ່ບໍ່ໄດ້ (ອອບລາຍ) — ລອງໃຊ້ຂໍ້ມູນທີ່ເຄີຍແຄຊ໌ໄວ້, ຖ້າບໍ່ມີ ໃຫ້ເພີ່ມແບບຍັງບໍ່ຢືນຢັນ
+    const cache = getProductCache();
+    const cached = cache[code];
+    if (cached) {
+      addToCart(cached, true);
+      showFeedback("ok", `✓ (ອອບລາຍ/ແຄຊ໌) ${cached.product_id} — ${cached.product_name}`);
+    } else {
+      addToCart({ product_id: code, product_name: code, unit: "", cost: null }, false);
+      showFeedback("err", `⚠ ອອບລາຍ — ບໍ່ຮູ້ຈັກລະຫັດນີ້ ຈະຕັດຢືນຢັນຊື່/ລາຄາຄືນຕອນມີເນັດ`);
+    }
   } finally {
     setTimeout(() => { scanning = false; }, 400);
   }
@@ -533,10 +614,11 @@ function showFeedback(type, message) {
 }
 
 // ---------------- Cart management ----------------
-function addToCart(product) {
+function addToCart(product, verified) {
   const existing = cart.find((it) => it.product_id === product.product_id);
   if (existing) {
     existing.quantity += 1;
+    if (verified) existing.verified = true; // ຖ້າຢືນຢັນຄືນຕອນມີເນັດ ອັບເດດໃຫ້ຖືກ
   } else {
     cart.push({
       product_id: product.product_id,
@@ -544,6 +626,7 @@ function addToCart(product) {
       unit: product.unit,
       cost: product.cost ?? null,
       quantity: 1,
+      verified: !!verified,
     });
   }
   renderCart();
@@ -588,7 +671,7 @@ function renderCart() {
     row.innerHTML = `
       <div class="info">
         <div class="sku">${item.product_id}</div>
-        <div class="name">${item.product_name}</div>
+        <div class="name">${item.product_name}${item.verified ? "" : ' <span class="unverified-tag">⚠ ຍັງບໍ່ຢືນຢັນ</span>'}</div>
       </div>
       <div class="qty-control">
         <button class="qty-btn" data-action="dec" data-id="${item.product_id}">−</button>
@@ -612,6 +695,124 @@ document.getElementById("cart-list").addEventListener("click", (e) => {
 });
 
 // ---------------- Submit ----------------
+// ---------------- ຄິວລໍສົ່ງ (ຕອນອອບລາຍ) ----------------
+const QUEUE_KEY = "trcloud-pending-mr-queue";
+let isFlushingQueue = false;
+
+function getQueue() {
+  try {
+    return JSON.parse(localStorage.getItem(QUEUE_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveQueue(queue) {
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  updateQueueUI();
+}
+
+function enqueue(payload) {
+  const queue = getQueue();
+  queue.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, payload });
+  saveQueue(queue);
+}
+
+function showToast(type, message) {
+  const el = document.getElementById("toast");
+  el.textContent = message;
+  el.className = `show ${type}`;
+  setTimeout(() => { el.className = ""; }, 4000);
+}
+
+// ສົ່ງໄປ /api/submit-mr — ໃຊ້ຮ່ວມກັນລະຫວ່າງການສົ່ງໂດຍກົງ ແລະ ການສົ່ງຄິວທີ່ຄ້າງໄວ້
+async function postSubmitMR(payload) {
+  try {
+    const resp = await fetch("/api/submit-mr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    return { networkError: false, ok: resp.ok, data };
+  } catch (err) {
+    return { networkError: true, error: err };
+  }
+}
+
+async function flushQueue() {
+  if (isFlushingQueue || !navigator.onLine) return;
+  const queue = getQueue();
+  if (queue.length === 0) return;
+
+  isFlushingQueue = true;
+  document.getElementById("sync-now-btn").disabled = true;
+
+  while (true) {
+    const current = getQueue();
+    if (current.length === 0) break;
+    const item = current[0];
+
+    const result = await postSubmitMR(item.payload);
+
+    if (result.networkError) {
+      break; // ยังออฟไลน์อยู่จริง — เลิกลอง ไว้รอบหน้า
+    }
+
+    // ไม่ว่าจะสำเร็จหรือ TRCloud ปฏิเสธ ก็นำออกจากคิว (ส่งซ้ำเหมือนเดิมจะไม่ทำให้ผลต่างไปจากเดิม)
+    saveQueue(getQueue().filter((q) => q.id !== item.id));
+
+    if (result.ok && result.data.success === 1) {
+      showToast("ok", `✓ ສົ່ງທີ່ຄ້າງໄວ້ສຳເລັດ (ຜູ້ເບີກ: ${item.payload.request_by || "-"})`);
+    } else {
+      showModal(
+        false,
+        "ລາຍການທີ່ຄ້າງໄວ້ສົ່ງບໍ່ສຳເລັດ",
+        `ຜູ້ເບີກ: ${item.payload.request_by || "-"} — ${result.data?.message || result.data?.error || "TRCloud ປະຕິເສດ"}`
+      );
+      break; // หยุดไว้ให้ผู้ใช้เห็น ไม่ยิงต่อจนล้นกันไปหมด
+    }
+  }
+
+  isFlushingQueue = false;
+  updateQueueUI();
+}
+
+function updateQueueUI() {
+  const queue = getQueue();
+  const badge = document.getElementById("queue-badge");
+  const syncBtn = document.getElementById("sync-now-btn");
+
+  if (queue.length > 0) {
+    badge.textContent = queue.length;
+    badge.classList.remove("hidden");
+    syncBtn.classList.remove("hidden");
+    syncBtn.disabled = !navigator.onLine || isFlushingQueue;
+  } else {
+    badge.classList.add("hidden");
+    syncBtn.classList.add("hidden");
+  }
+}
+
+function updateNetStatus() {
+  const dot = document.getElementById("net-dot");
+  const text = document.getElementById("net-text");
+  if (navigator.onLine) {
+    dot.className = "net-dot online";
+    text.textContent = "ອອນລາຍ";
+    flushQueue();
+  } else {
+    dot.className = "net-dot offline";
+    text.textContent = "ອອບລາຍ — ຍິງໄດ້ປົກກະຕິ ຈະສົ່ງເມື່ອກັບມາອອນລາຍ";
+  }
+  updateQueueUI();
+}
+
+window.addEventListener("online", updateNetStatus);
+window.addEventListener("offline", updateNetStatus);
+document.getElementById("sync-now-btn").addEventListener("click", flushQueue);
+setInterval(() => { if (navigator.onLine) flushQueue(); }, 20000);
+
 document.getElementById("submit-btn").addEventListener("click", async () => {
   const submitBtn = document.getElementById("submit-btn");
   submitBtn.disabled = true;
@@ -624,26 +825,25 @@ document.getElementById("submit-btn").addEventListener("click", async () => {
     purpose: document.getElementById("f-purpose").value,
   };
 
-  try {
-    const resp = await fetch("/api/submit-mr", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await resp.json();
+  const result = await postSubmitMR(payload);
 
-    if (resp.ok && data.success === 1) {
-      showModal(true, "ເບີກສິນຄ້າສຳເລັດ", data.message || JSON.stringify(data));
-      resetFormForNextDocument();
-    } else {
-      showModal(false, "ສົ່ງບໍ່ສຳເລັດ", data.message || data.error || JSON.stringify(data));
-    }
-  } catch (err) {
-    showModal(false, "ເຊື່ອມຕໍ່ບໍ່ສຳເລັດ", err.message);
-  } finally {
-    submitBtn.textContent = "ຢືນຢັນເບີກສິນຄ້າ";
-    submitBtn.disabled = cart.length === 0;
+  if (result.networkError) {
+    enqueue(payload);
+    showModal(
+      true,
+      "ບໍ່ມີອິນເຕີເນັດ — ບັນທຶກໄວ້ລໍສົ່ງແລ້ວ",
+      "ລະບົບຈະສົ່ງໃຫ້ອັດຕະໂນມັດທັນທີທີ່ກັບມາອອນລາຍ (ຫລືກົດ 'ສົ່ງທີ່ຄ້າງໄວ້' ດ້ວຍຕົນເອງ) — ຈຳໄວ້ວ່າສະຕ໊ອກຍັງບໍ່ຖືກຕັດຈົນກວ່າຈະສົ່ງສຳເລັດ"
+    );
+    resetFormForNextDocument();
+  } else if (result.ok && result.data.success === 1) {
+    showModal(true, "ເບີກສິນຄ້າສຳເລັດ", result.data.message || JSON.stringify(result.data));
+    resetFormForNextDocument();
+  } else {
+    showModal(false, "ສົ່ງບໍ່ສຳເລັດ", result.data.message || result.data.error || JSON.stringify(result.data));
   }
+
+  submitBtn.textContent = "ຢືນຢັນເບີກສິນຄ້າ";
+  submitBtn.disabled = cart.length === 0;
 });
 
 function resetFormForNextDocument() {
@@ -670,30 +870,54 @@ document.getElementById("modal-close").addEventListener("click", () => {
 });
 
 // ---------------- Fixed values (ສະແດງໃຫ້ຮູ້ເທົ່ານັ້ນ ແກ້ບໍ່ໄດ້) ----------------
-async function loadFixedInfo() {
+const FIXED_INFO_CACHE_KEY = "trcloud-fixed-info-cache";
+
+function renderFixedInfo(d) {
   const box = document.getElementById("fixed-info");
+  box.innerHTML = `
+    ຄັງສິນຄ້າ: <b></b><br>
+    ແຜນກ: <b></b><br>
+    ສູດບັນຊີ: <b></b><br>
+    ສະຖານະ: <b></b>
+  `;
+  const slots = box.querySelectorAll("b");
+  slots[0].textContent = d.warehouse || "-";
+  slots[1].textContent = d.department || "-";
+  slots[2].textContent = d.accounting_formula || "-";
+  slots[3].textContent = d.status || "-";
+}
+
+async function loadFixedInfo() {
   try {
     const resp = await fetch("/api/form-options");
     const d = await resp.json();
-    box.innerHTML = `
-      ຄັງສິນຄ້າ: <b></b><br>
-      ແຜນກ: <b></b><br>
-      ສູດບັນຊີ: <b></b><br>
-      ສະຖານະ: <b></b>
-    `;
-    const slots = box.querySelectorAll("b");
-    slots[0].textContent = d.warehouse || "-";
-    slots[1].textContent = d.department || "-";
-    slots[2].textContent = d.accounting_formula || "-";
-    slots[3].textContent = d.status || "-";
+    localStorage.setItem(FIXED_INFO_CACHE_KEY, JSON.stringify(d));
+    renderFixedInfo(d);
   } catch (err) {
-    box.textContent = "ໂຫລດຂໍ້ມູນຄ່າຄົງທີ່ບໍ່ສຳເລັດ";
+    // ອອບລາຍ — ໃຊ້ຄ່າທີ່ເຄີຍແຄຊ໌ໄວ້ຄັ້ງກ່ອນແທນ
+    try {
+      const cached = JSON.parse(localStorage.getItem(FIXED_INFO_CACHE_KEY));
+      if (cached) {
+        renderFixedInfo(cached);
+        return;
+      }
+    } catch {}
+    document.getElementById("fixed-info").textContent = "ໂຫລດຂໍ້ມູນຄ່າຄົງທີ່ບໍ່ສຳເລັດ (ບໍ່ມີອິນເຕີເນັດ ແລະ ບໍ່ເຄີຍໂຫລດມາກ່ອນ)";
   }
 }
 
 // ---------------- Init ----------------
 loadFixedInfo();
 startCamera();
+updateNetStatus();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((err) => {
+      console.error("[sw] ລົງທະບຽນ service worker ບໍ່ສຳເລັດ:", err.message);
+    });
+  });
+}
 </script>
 
 </body>
