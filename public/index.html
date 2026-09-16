@@ -361,7 +361,7 @@
 
 <header>
   <h1>ຕັດສະຕ໊ອກດ້ວຍບາໂຄດ</h1>
-  <span class="sub">TRCloud MR</span>
+  <span class="sub"><a href="/admin.html" style="color:inherit;text-decoration:none;">⚙ TRCloud MR</a></span>
 </header>
 
 <main>
@@ -398,6 +398,32 @@
     <div>
       <label>ຈຸດປະສົງ (purpose)</label>
       <input id="f-purpose" type="text" placeholder="ເຊັ່ນ: ນຳໄປໃຊ້ໜ້າງານ..." />
+    </div>
+    <div class="form-row">
+      <div>
+        <label>ແຜນກ (department)</label>
+        <select id="f-department">
+          <option value="">-- ກຳລັງໂຫລດ... --</option>
+        </select>
+      </div>
+      <div>
+        <label>ໂຄງການ (project)</label>
+        <select id="f-project">
+          <option value="">-- ກຳລັງໂຫລດ... --</option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label>ພະນັກງານຂາຍ (salesman)</label>
+      <select id="f-salesman">
+        <option value="">-- ກຳລັງໂຫລດ... --</option>
+      </select>
+    </div>
+    <div>
+      <label>ສູດບັນຊີ (accounting formula)</label>
+      <select id="f-formula">
+        <option value="">-- ກຳລັງໂຫລດ... --</option>
+      </select>
     </div>
   </div>
 
@@ -613,6 +639,10 @@ document.getElementById("submit-btn").addEventListener("click", async () => {
     request_by: document.getElementById("f-request-by").value,
     warehouse: document.getElementById("f-warehouse").value,
     purpose: document.getElementById("f-purpose").value,
+    department: document.getElementById("f-department").value,
+    project: document.getElementById("f-project").value,
+    salesman: document.getElementById("f-salesman").value,
+    accounting_formula: document.getElementById("f-formula").value,
   };
 
   try {
@@ -648,36 +678,63 @@ document.getElementById("modal-close").addEventListener("click", () => {
   document.getElementById("result-modal").classList.remove("show");
 });
 
-// ---------------- Warehouse dropdown ----------------
-async function loadWarehouses() {
-  const select = document.getElementById("f-warehouse");
-  try {
-    const resp = await fetch("/api/warehouses");
-    const data = await resp.json();
-    const list = Array.isArray(data.warehouses) ? data.warehouses : [];
+// ---------------- Dropdown options (warehouse / department / project / salesman) ----------------
+function fillSelect(select, list, emptyLabel, notFoundLabel) {
+  select.innerHTML = "";
+  if (!list || list.length === 0) {
+    select.innerHTML = `<option value="">${notFoundLabel}</option>`;
+    return;
+  }
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = emptyLabel;
+  select.appendChild(placeholder);
+  list.forEach((name) => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  });
+}
 
-    select.innerHTML = "";
-    if (list.length === 0) {
-      select.innerHTML = `<option value="">-- ບໍ່ພົບຄັງໃນລະບົບ --</option>`;
-      return;
+async function loadFormOptions() {
+  const warehouseSel = document.getElementById("f-warehouse");
+  const departmentSel = document.getElementById("f-department");
+  const projectSel = document.getElementById("f-project");
+  const salesmanSel = document.getElementById("f-salesman");
+  const formulaSel = document.getElementById("f-formula");
+
+  try {
+    const resp = await fetch("/api/form-options");
+    const data = await resp.json();
+
+    fillSelect(warehouseSel, data.warehouses, "-- ເລືອກຄັງ --", "-- ບໍ່ພົບຄັງໃນລະບົບ --");
+    fillSelect(departmentSel, data.departments, "-- ເລືອກແຜນກ (ບໍ່ບັງຄັບ) --", "-- ບໍ່ພົບແຜນກ --");
+    fillSelect(projectSel, data.projects, "-- ເລືອກໂຄງການ (ບໍ່ບັງຄັບ) --", "-- ບໍ່ພົບໂຄງການ --");
+    fillSelect(salesmanSel, data.salesmen, "-- ເລືອກພະນັກງານຂາຍ (ບໍ່ບັງຄັບ) --", "-- ບໍ່ພົບລາຍຊື່ --");
+
+    // สูตรบัญชี: ไม่มี placeholder ว่าง ให้เลือกตัวแรกเป็นค่าเริ่มต้นเสมอ (ต้องมีค่าส่งไป TRCloud)
+    formulaSel.innerHTML = "";
+    const formulas = data.accounting_formulas || [];
+    if (formulas.length === 0) {
+      formulaSel.innerHTML = `<option value="mr">mr (ຄ່າເລີ່ມຕົ້ນ)</option>`;
+    } else {
+      formulas.forEach((name) => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        formulaSel.appendChild(opt);
+      });
     }
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "-- ເລືອກຄັງ --";
-    select.appendChild(placeholder);
-    list.forEach((name) => {
-      const opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
-      select.appendChild(opt);
-    });
   } catch (err) {
-    select.innerHTML = `<option value="">-- ໂຫລດລາຍຊື່ຄັງບໍ່ສຳເລັດ --</option>`;
+    [warehouseSel, departmentSel, projectSel, salesmanSel, formulaSel].forEach((sel) => {
+      sel.innerHTML = `<option value="">-- ໂຫລດຂໍ້ມູນບໍ່ສຳເລັດ --</option>`;
+    });
   }
 }
 
 // ---------------- Init ----------------
-loadWarehouses();
+loadFormOptions();
 startCamera();
 </script>
 
