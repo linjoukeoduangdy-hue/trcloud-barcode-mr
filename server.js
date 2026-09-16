@@ -16,6 +16,19 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 3000;
 
+// ---------------- Warehouse list ----------------
+// ລາຍຊື່ຄັງ (warehouse) ຕ້ອງພິມໃຫ້ "ກົງກັບໃນ TRCloud ຮ້ອຍເປີເຊັນ" (ໂຕພິມນ້ອຍ/ໃຫຍ່, ວັນນະຍຸດ)
+// ເອົາຊື່ຈາກ dropdown "ຄັງສິນຄ້າ" ໃນໜ້າ TRCloud > ເບີກສິນຄ້າ/ວັດຖຸດິບ > General ມາໃສ່ຢູ່ນີ້
+// ຖ້າຢາກແກ້ໄວອອນລາຍ ໂດຍບໍ່ຕ້ອງແກ້ໂຄ້ດ, ຕັ້ງ env var TRCLOUD_WAREHOUSES ເປັນລາຍການຄັ່ນດ້ວຍ , ແທນ
+const DEFAULT_WAREHOUSES = ["ເຊໂປນ"];
+const WAREHOUSES = process.env.TRCLOUD_WAREHOUSES
+  ? process.env.TRCLOUD_WAREHOUSES.split(",").map((w) => w.trim()).filter(Boolean)
+  : DEFAULT_WAREHOUSES;
+
+app.get("/api/warehouses", (req, res) => {
+  res.status(200).json({ warehouses: WAREHOUSES });
+});
+
 const TRCLOUD_SEARCH_ENDPOINT =
   "https://thaidrill.trcloud.co/application/api-connector/end-point/engine-inventory/search-inventory.php";
 const TRCLOUD_MR_ENDPOINT =
