@@ -23,8 +23,10 @@ const PORT = process.env.PORT || 3000;
 // ຖ້າຢາກປ່ຽນ ໂດຍບໍ່ຕ້ອງແກ້ໂຄ້ດ ໃຫ້ຕັ້ງ env var ທີ່ກ່ຽວຂ້ອງໃນ Render
 // =================================================================
 const FIXED_WAREHOUSE = process.env.TRCLOUD_WAREHOUSE || "คลังเซโปน";
-const FIXED_PROJECT = process.env.TRCLOUD_PROJECT || "โครงการเซโปน-แท่งคำและนาลู";
-const FIXED_DEPARTMENT = process.env.TRCLOUD_DEPARTMENT || "";
+// ໝາຍເຫດ: ຄ່ານີ້ຖືກສົ່ງເຂົ້າຊ່ອງ "ແຜນກ (department)" ໃນ TRCloud ບໍ່ແມ່ນຊ່ອງ "ໂຄງການ (project)"
+// ຕາມທີ່ຮ້ອງຂໍ — ຊ່ອງ project ປ່ອຍຫວ່າງໄວ້
+const FIXED_DEPARTMENT_VALUE =
+  process.env.TRCLOUD_DEPARTMENT || "โครงการเซโปน-แท่งคำและนาลู";
 const FIXED_SALESMAN = process.env.TRCLOUD_SALESMAN || "";
 const FIXED_ACCOUNTING_FORMULA =
   process.env.TRCLOUD_ACCOUNTING_FORMULA || "Internal Issue_ค่าวัสดุสิ้นเปลือง";
@@ -34,8 +36,7 @@ const FIXED_STATUS = process.env.TRCLOUD_STATUS || "ขนส่งเสร็�
 app.get("/api/form-options", (req, res) => {
   res.status(200).json({
     warehouse: FIXED_WAREHOUSE,
-    project: FIXED_PROJECT,
-    department: FIXED_DEPARTMENT,
+    department: FIXED_DEPARTMENT_VALUE,
     salesman: FIXED_SALESMAN,
     accounting_formula: FIXED_ACCOUNTING_FORMULA,
     status: FIXED_STATUS,
@@ -222,7 +223,7 @@ app.get("/api/lookup", async (req, res) => {
 
 // ---------------- POST /api/submit-mr ----------------
 app.post("/api/submit-mr", async (req, res) => {
-  const { items, request_by, purpose } = req.body || {};
+  const { items, request_by, purpose, name } = req.body || {};
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "ไม่มีรายการสินค้าในตะกร้า" });
@@ -290,14 +291,20 @@ app.post("/api/submit-mr", async (req, res) => {
     company_format: "MR",
     document_number: generateDocumentNumber(),
     status: FIXED_STATUS,
+    // ລອງຫລາຍຊື່ຊ່ອງ ເພາະບໍ່ຮູ້ແນ່ນອນວ່າ TRCloud ໃຊ້ຊື່ໃດສຳລັບ dropdown "ສະຖານະ" (ຂົນສົ່ງ)
+    // — ຊື່ທີ່ບໍ່ຖືກຈະຖືກ TRCloud ເມີນເສີຍໄປເອງ ບໍ່ເປັນອັນຕະລາຍ
+    transport_status: FIXED_STATUS,
+    shipping_status: FIXED_STATUS,
+    delivery_status: FIXED_STATUS,
+    name: name || "",
     request_by: request_by || "",
     purpose: purpose || "",
     client_name: "",
     client_telephone: "",
     description: "",
     salesman: FIXED_SALESMAN,
-    department: FIXED_DEPARTMENT,
-    project: FIXED_PROJECT,
+    department: FIXED_DEPARTMENT_VALUE,
+    project: "",
     warehouse: FIXED_WAREHOUSE,
     url: "",
     approve_status: "",
