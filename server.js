@@ -35,6 +35,68 @@ function generateDocumentNumber() {
   return `${yy}${mm}${dd}${rand}`;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * เรียก TRCloud API พร้อม:
+ * - ใส่ User-Agent แบบ browser (บาง endpoint ที่มี Cloudflare กั้นอยู่ จะบล็อก/ปฏิเสธ request
+ *   ที่ไม่มี User-Agent เหมือนคนใช้เบราว์เซอร์จริง เป็นระยะ)
+ * - retry อัตโนมัติสูงสุด 3 ครั้งถ้าเจอ error ชั่วคราว (network error, 5xx, หรือ body ว่าง/parse ไม่ได้)
+ * - อ่าน response เป็น text ก่อนเสมอ แล้วค่อยลอง parse JSON เพื่อให้เห็น raw response
+ *   จริงๆ ตอน debug ถ้า parse ไม่ผ่าน (ไม่ใช่เดาจาก error ทั่วไปแบบเดิม)
+ */
+async function callTRCloud(url, payload, { retries = 3, retryDelayMs = 1500 } = {}) {
+  const formData = new URLSearchParams();
+  formData.append("json", JSON.stringify(payload));
+
+  let lastError;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const trResp = await fetch(url, {
+        method: "POST",
+        headers: {
+          Origin: process.env.TRCLOUD_ORIGIN,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          Accept: "application/json, text/plain, */*",
+        },
+        body: formData.toString(),
+      });
+
+      const rawText = await trResp.text();
+
+      if (!rawText || !rawText.trim()) {
+        throw new Error(`TRCloud ตอบกลับเป็นค่าว่าง (HTTP ${trResp.status})`);
+      }
+
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        // แนบ raw response (ตัดให้สั้นลง) ไว้ใน error เพื่อ debug ได้ง่ายขึ้น
+        const snippet = rawText.slice(0, 300);
+        throw new Error(
+          `แปลงผลลัพธ์จาก TRCloud เป็น JSON ไม่ได้ (HTTP ${trResp.status}): ${snippet}`
+        );
+      }
+
+      return { ok: trResp.ok, status: trResp.status, data };
+    } catch (err) {
+      lastError = err;
+      console.error(`[callTRCloud] พยายามครั้งที่ ${attempt}/${retries} ล้มเหลว: ${err.message}`);
+      if (attempt < retries) {
+        await sleep(retryDelayMs);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 // ---------------- GET /api/lookup?sku=... ----------------
 app.get("/api/lookup", async (req, res) => {
   const sku = (req.query.sku || "").toString().trim();
@@ -54,20 +116,8 @@ app.get("/api/lookup", async (req, res) => {
     start: 0,
   };
 
-  const formData = new URLSearchParams();
-  formData.append("json", JSON.stringify(payload));
-
   try {
-    const trResp = await fetch(TRCLOUD_SEARCH_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Origin: process.env.TRCLOUD_ORIGIN,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: formData.toString(),
-    });
-
-    const data = await trResp.json();
+    const { data } = await callTRCloud(TRCLOUD_SEARCH_ENDPOINT, payload);
 
     if (data.success !== 1) {
       return res.status(404).json({ error: data.message || "ไม่พบสินค้า" });
@@ -88,6 +138,7 @@ app.get("/api/lookup", async (req, res) => {
       unit: product.unit,
     });
   } catch (err) {
+    console.error("[/api/lookup] error:", err.message);
     return res.status(502).json({ error: `เชื่อมต่อ TRCloud ไม่สำเร็จ: ${err.message}` });
   }
 });
@@ -148,22 +199,11 @@ app.post("/api/submit-mr", async (req, res) => {
     })),
   };
 
-  const formData = new URLSearchParams();
-  formData.append("json", JSON.stringify(payload));
-
   try {
-    const trResp = await fetch(TRCLOUD_MR_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Origin: process.env.TRCLOUD_ORIGIN,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: formData.toString(),
-    });
-
-    const data = await trResp.json();
+    const { data } = await callTRCloud(TRCLOUD_MR_ENDPOINT, payload);
     return res.status(200).json(data);
   } catch (err) {
+    console.error("[/api/submit-mr] error:", err.message);
     return res.status(502).json({ error: `เชื่อมต่อ TRCloud ไม่สำเร็จ: ${err.message}` });
   }
 });
