@@ -1,743 +1,326 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-<title>ตัดสต๊อก · TRCloud</title>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<style>
-  :root {
-    --bg: #14181c;
-    --panel: #1c2126;
-    --panel-2: #232a31;
-    --line: #303941;
-    --text: #e9edf1;
-    --text-dim: #8b98a3;
-    --amber: #f2b705;
-    --amber-dim: #7a5e02;
-    --green: #3fbf6f;
-    --red: #e6584b;
-    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  }
+// server.js
+// เว็บแอปตัดสต๊อกด้วยบาร์โค้ด -> TRCloud (สำหรับ deploy บน Render)
+// รวม static frontend (public/index.html) + API routes ไว้ในเซิร์ฟเวอร์เดียว
 
-  * { box-sizing: border-box; }
+import express from "express";
+import crypto from "crypto";
+import path from "path";
+import { fileURLToPath } from "url";
 
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    height: 100%;
-  }
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-  body {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-  }
+const app = express();
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
-  header {
-    padding: 18px 20px 14px;
-    border-bottom: 1px solid var(--line);
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-  }
+const PORT = process.env.PORT || 3000;
 
-  header h1 {
-    font-size: 18px;
-    font-weight: 700;
-    margin: 0;
-    letter-spacing: -0.01em;
-  }
+// =================================================================
+// ---------------- ຄ່າຄົງທີ່ (fixed values) ----------------
+// ຄ່າເຫລົ່ານີ້ຖືກ fix ໄວ້ຢູ່ server ແລ້ວ ບໍ່ມີຊ່ອງໃຫ້ເລືອກໃນໜ້າເວັບ
+// ຕ້ອງພິມໃຫ້ "ກົງກັບໃນ TRCloud ຮ້ອຍເປີເຊັນ" (ໂຕພິມນ້ອຍ/ໃຫຍ່, ວັນນະຍຸດ, ຂີດກາງ)
+// ຖ້າຢາກປ່ຽນ ໂດຍບໍ່ຕ້ອງແກ້ໂຄ້ດ ໃຫ້ຕັ້ງ env var ທີ່ກ່ຽວຂ້ອງໃນ Render
+// =================================================================
+const FIXED_WAREHOUSE = process.env.TRCLOUD_WAREHOUSE || "คลังเซโปน";
+const FIXED_PROJECT = process.env.TRCLOUD_PROJECT || "โครงการเซโปน-แท่งคำและนาลู";
+const FIXED_DEPARTMENT = process.env.TRCLOUD_DEPARTMENT || "";
+const FIXED_SALESMAN = process.env.TRCLOUD_SALESMAN || "";
+const FIXED_ACCOUNTING_FORMULA =
+  process.env.TRCLOUD_ACCOUNTING_FORMULA || "Internal Issue_ค่าวัสดุสิ้นเปลือง";
+const FIXED_STATUS = process.env.TRCLOUD_STATUS || "ขนส่งเสร็จสิ้น";
 
-  header .sub {
-    font-size: 12px;
-    color: var(--text-dim);
-    font-family: var(--mono);
-  }
-
-  main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    padding: 16px;
-    gap: 16px;
-    padding-bottom: 140px; /* กันโดน sticky bar ทับ */
-  }
-
-  /* ---------- Scan panel ---------- */
-  .scan-panel {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-
-  .scan-tabs {
-    display: flex;
-  }
-
-  .scan-tab {
-    flex: 1;
-    padding: 12px;
-    text-align: center;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-dim);
-    background: var(--panel-2);
-    border: none;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
-  }
-
-  .scan-tab.active {
-    color: var(--amber);
-    border-bottom-color: var(--amber);
-    background: var(--panel);
-  }
-
-  .scan-body { padding: 16px; }
-
-  #camera-view {
-    width: 100%;
-    border-radius: 8px;
-    overflow: hidden;
-    background: #000;
-    min-height: 220px;
-  }
-
-  .usb-hint {
-    font-size: 13px;
-    color: var(--text-dim);
-    margin-bottom: 10px;
-    line-height: 1.5;
-  }
-
-  #usb-input {
-    width: 100%;
-    padding: 16px;
-    font-size: 20px;
-    font-family: var(--mono);
-    background: var(--bg);
-    border: 2px solid var(--amber-dim);
-    border-radius: 8px;
-    color: var(--text);
-    outline: none;
-  }
-
-  #usb-input:focus {
-    border-color: var(--amber);
-  }
-
-  .hidden { display: none !important; }
-
-  /* ---------- Scan feedback toast ---------- */
-  #scan-feedback {
-    margin-top: 10px;
-    padding: 10px 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-family: var(--mono);
-    display: none;
-  }
-  #scan-feedback.show { display: block; }
-  #scan-feedback.ok { background: rgba(63,191,111,0.12); color: var(--green); border: 1px solid rgba(63,191,111,0.3); }
-  #scan-feedback.err { background: rgba(230,88,75,0.12); color: var(--red); border: 1px solid rgba(230,88,75,0.3); }
-
-  /* ---------- Cart ---------- */
-  .cart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-top: 4px;
-  }
-
-  .cart-header h2 {
-    font-size: 14px;
-    text-transform: none;
-    color: var(--text-dim);
-    font-weight: 600;
-    margin: 0;
-  }
-
-  .cart-count {
-    font-family: var(--mono);
-    font-size: 13px;
-    color: var(--amber);
-  }
-
-  .cart-empty {
-    padding: 32px 16px;
-    text-align: center;
-    color: var(--text-dim);
-    font-size: 14px;
-    border: 1px dashed var(--line);
-    border-radius: 10px;
-  }
-
-  .cart-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 12px 14px;
-    margin-bottom: 8px;
-  }
-
-  .cart-item .info { flex: 1; min-width: 0; }
-
-  .cart-item .sku {
-    font-family: var(--mono);
-    font-size: 13px;
-    color: var(--amber);
-  }
-
-  .cart-item .name {
-    font-size: 14px;
-    margin-top: 2px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .qty-control {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .qty-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    border: 1px solid var(--line);
-    background: var(--panel-2);
-    color: var(--text);
-    font-size: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-  }
-
-  .qty-val {
-    min-width: 28px;
-    text-align: center;
-    font-family: var(--mono);
-    font-size: 15px;
-  }
-
-  .remove-btn {
-    background: none;
-    border: none;
-    color: var(--text-dim);
-    font-size: 18px;
-    cursor: pointer;
-    padding: 4px 6px;
-  }
-  .remove-btn:hover { color: var(--red); }
-
-  /* ---------- Header info form ---------- */
-  .info-form {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 14px;
-    display: grid;
-    gap: 10px;
-  }
-
-  .info-form label {
-    display: block;
-    font-size: 12px;
-    color: var(--text-dim);
-    margin-bottom: 4px;
-  }
-
-  .info-form input,
-  .info-form select {
-    width: 100%;
-    padding: 10px 12px;
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    color: var(--text);
-    font-size: 14px;
-    outline: none;
-  }
-  .info-form input:focus,
-  .info-form select:focus { border-color: var(--amber); }
-
-  .form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-
-  /* ---------- Sticky submit bar ---------- */
-  .submit-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: var(--panel-2);
-    border-top: 1px solid var(--line);
-    padding: 14px 16px;
-    display: flex;
-    gap: 12px;
-    align-items: center;
-  }
-
-  .submit-bar .total {
-    font-family: var(--mono);
-    font-size: 13px;
-    color: var(--text-dim);
-    flex-shrink: 0;
-  }
-
-  .submit-btn {
-    flex: 1;
-    padding: 14px;
-    border-radius: 8px;
-    border: none;
-    background: var(--amber);
-    color: #1a1400;
-    font-weight: 700;
-    font-size: 15px;
-    cursor: pointer;
-  }
-
-  .submit-btn:disabled {
-    background: var(--line);
-    color: var(--text-dim);
-    cursor: not-allowed;
-  }
-
-  /* ---------- Result modal ---------- */
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.6);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    z-index: 100;
-  }
-  .modal-overlay.show { display: flex; }
-
-  .modal {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 24px;
-    max-width: 360px;
-    width: 100%;
-    text-align: center;
-  }
-
-  .modal .icon { font-size: 40px; margin-bottom: 8px; }
-  .modal h3 { margin: 0 0 8px; font-size: 17px; }
-  .modal p { margin: 0 0 18px; font-size: 13px; color: var(--text-dim); font-family: var(--mono); word-break: break-word; }
-
-  .modal button {
-    width: 100%;
-    padding: 12px;
-    border-radius: 8px;
-    border: none;
-    background: var(--amber);
-    color: #1a1400;
-    font-weight: 700;
-    cursor: pointer;
-  }
-</style>
-</head>
-<body>
-
-<header>
-  <h1>ຕັດສະຕ໊ອກດ້ວຍບາໂຄດ</h1>
-  <span class="sub"><a href="/admin.html" style="color:inherit;text-decoration:none;">⚙ TRCloud MR</a></span>
-</header>
-
-<main>
-  <div class="scan-panel">
-    <div class="scan-tabs">
-      <button class="scan-tab active" data-mode="camera">📷 ກ້ອງ</button>
-      <button class="scan-tab" data-mode="usb">⌨️ ເຄື່ອງຍິງ USB</button>
-    </div>
-    <div class="scan-body">
-      <div id="camera-mode">
-        <div id="camera-view"></div>
-      </div>
-      <div id="usb-mode" class="hidden">
-        <div class="usb-hint">ຍິງບາໂຄດດ້ວຍເຄື່ອງຍິງ USB ໄດ້ເລີຍ (ຊ່ອງນີ້ຮັບຄ່າອັດຕະໂນມັດ) ຫລືພິມ SKU ແລ້ວກົດ Enter</div>
-        <input id="usb-input" type="text" placeholder="ຍິງ ຫລື ພິມ SKU..." autocomplete="off" />
-      </div>
-      <div id="scan-feedback"></div>
-    </div>
-  </div>
-
-  <div class="info-form">
-    <div class="form-row">
-      <div>
-        <label>ຜູ້ເບີກ (request_by)</label>
-        <input id="f-request-by" type="text" placeholder="ຊື່ຜູ້ເບີກ" />
-      </div>
-      <div>
-        <label>ຄັງສິນຄ້າ (warehouse)</label>
-        <select id="f-warehouse">
-          <option value="">-- ກຳລັງໂຫລດລາຍຊື່ຄັງ... --</option>
-          <option value="คลังเซโปน">ເຊໂປນ</option>
-        </select>
-      </div>
-    </div>
-    <div>
-      <label>ຈຸດປະສົງ (purpose)</label>
-      <input id="f-purpose" type="text" placeholder="ເຊັ່ນ: ນຳໄປໃຊ້ໜ້າງານ..." />
-    </div>
-    <div class="form-row">
-      <div>
-        <label>ແຜນກ (department)</label>
-        <select id="f-department">
-          <option value="">-- ກຳລັງໂຫລດ... --</option>
-        </select>
-      </div>
-      <div>
-        <label>ໂຄງການ (project)</label>
-        <select id="f-project">
-          <option value="">-- ກຳລັງໂຫລດ... --</option>
-        </select>
-      </div>
-    </div>
-    <div>
-      <label>ພະນັກງານຂາຍ (salesman)</label>
-      <select id="f-salesman">
-        <option value="">-- ກຳລັງໂຫລດ... --</option>
-      </select>
-    </div>
-    <div>
-      <label>ສູດບັນຊີ (accounting formula)</label>
-      <select id="f-formula">
-        <option value="">-- ກຳລັງໂຫລດ... --</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="cart-section">
-    <div class="cart-header">
-      <h2>ລາຍການທີ່ຈະເບີກ</h2>
-      <span class="cart-count" id="cart-count">0 ລາຍການ</span>
-    </div>
-    <div id="cart-list" style="margin-top:10px;">
-      <div class="cart-empty" id="cart-empty">ຍັງບໍ່ມີລາຍການ — ເລີ່ມຍິງບາໂຄດເບື້ອງເທິງ</div>
-    </div>
-  </div>
-</main>
-
-<div class="submit-bar">
-  <span class="total" id="submit-total">0 ລາຍການ</span>
-  <button class="submit-btn" id="submit-btn" disabled>ຢືນຢັນເບີກສິນຄ້າ</button>
-</div>
-
-<div class="modal-overlay" id="result-modal">
-  <div class="modal">
-    <div class="icon" id="modal-icon">✅</div>
-    <h3 id="modal-title">ສຳເລັດ</h3>
-    <p id="modal-detail"></p>
-    <button id="modal-close">ປິດ</button>
-  </div>
-</div>
-
-<script>
-// ---------------- State ----------------
-let cart = []; // { product_id, product_name, quantity, unit }
-
-// ---------------- Tab switching ----------------
-const tabs = document.querySelectorAll(".scan-tab");
-const cameraMode = document.getElementById("camera-mode");
-const usbMode = document.getElementById("usb-mode");
-const usbInput = document.getElementById("usb-input");
-let html5QrCode = null;
-
-tabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    tabs.forEach((t) => t.classList.remove("active"));
-    tab.classList.add("active");
-    const mode = tab.dataset.mode;
-    if (mode === "camera") {
-      cameraMode.classList.remove("hidden");
-      usbMode.classList.add("hidden");
-      startCamera();
-    } else {
-      usbMode.classList.remove("hidden");
-      cameraMode.classList.add("hidden");
-      stopCamera();
-      usbInput.focus();
-    }
+// ສະແດງຄ່າຄົງທີ່ໃຫ້ໜ້າເວັບອ່ານໄປສະແດງ (ອ່ານຢ່າງດຽວ ແກ້ຜ່ານໜ້າເວັບບໍ່ໄດ້)
+app.get("/api/form-options", (req, res) => {
+  res.status(200).json({
+    warehouse: FIXED_WAREHOUSE,
+    project: FIXED_PROJECT,
+    department: FIXED_DEPARTMENT,
+    salesman: FIXED_SALESMAN,
+    accounting_formula: FIXED_ACCOUNTING_FORMULA,
+    status: FIXED_STATUS,
   });
 });
 
-// ---------------- Camera scanning ----------------
-function startCamera() {
-  if (html5QrCode) return;
-  html5QrCode = new Html5Qrcode("camera-view");
-  html5QrCode
-    .start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 260, height: 140 } },
-      (decodedText) => {
-        handleScan(decodedText);
-      },
-      () => {} // เพิกเฉย error ระหว่างสแกน (ยังไม่เจอโค้ด)
-    )
-    .catch((err) => {
-      showFeedback("err", "ເປີດກ້ອງບໍ່ສຳເລັດ: " + err);
-      html5QrCode = null;
-    });
+// =================================================================
+// ---------------- ເລກທີ MR (document_number) ----------------
+// ວິທີເກົ່າ (ສ້າງເລກເອງຈາກໄຟລ໌ນັບ) ເຮັດໃຫ້ເລກຊ້ຳກັນ ແລະ ຕັດສະຕ໊ອກບໍ່ໄດ້ ເພາະ:
+//   - Render Free Tier ລ້າງ disk ທຸກຄັ້ງທີ່ redeploy ຕົວນັບຈຶ່ງເລີ່ມ 01 ຄືນໃໝ່
+//   - ຕົວນັບຂອງເຮົາບໍ່ຮູ້ຈັກເລກທີ່ TRCloud ອອກເອງ (ຈາກການສ້າງໃບດ້ວຍມື)
+// ວິທີໃໝ່: ສົ່ງ document_number ເປັນຄ່າຫວ່າງ ໃຫ້ TRCloud ລັນເລກເອງຕໍ່ຈາກລະບົບຂອງມັນ
+// (ໃນໜ້າ TRCloud ຊ່ອງເລກໃບເບີກຕັ້ງເປັນ "number only - AUTO" ຢູ່ແລ້ວ)
+// ຖ້າຢາກກັບໄປໃສ່ເລກເອງ ໃຫ້ຕັ້ງ env var TRCLOUD_DOC_NUMBER_MODE=manual
+// =================================================================
+const DOC_NUMBER_MODE = process.env.TRCLOUD_DOC_NUMBER_MODE || "auto";
+
+function generateDocumentNumber() {
+  if (DOC_NUMBER_MODE !== "manual") {
+    return ""; // ໃຫ້ TRCloud ລັນເລກເອງ — ກັນເລກຊ້ຳໄດ້ແນ່ນອນທີ່ສຸດ
+  }
+  // manual: YYMMDD + HHMMSS + ເລກສຸ່ມ 3 ໂຕ (ໂອກາດຊ້ຳຕ່ຳຫລາຍ ແຕ່ບໍ່ຮັບປະກັນ 100%)
+  const now = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const stamp =
+    String(now.getFullYear()).slice(-2) +
+    p(now.getMonth() + 1) +
+    p(now.getDate()) +
+    p(now.getHours()) +
+    p(now.getMinutes()) +
+    p(now.getSeconds());
+  const rand = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
+  return `${stamp}${rand}`;
 }
 
-function stopCamera() {
-  if (html5QrCode) {
-    const instance = html5QrCode;
-    html5QrCode = null; // ປ່ອຍໄວ້ກ່ອນ ເພື່ອບໍ່ໃຫ້ startCamera() ຕິດ guard ຈາກ instance ເກົ່າ
-    instance
-      .stop()
-      .then(() => instance.clear())
-      .catch(() => {}); // ລໍ stop() ໃຫ້ແລ້ວກ່ອນ clear() ຈຶ່ງບໍ່ຂຶ້ນ "Cannot clear while scan is ongoing"
-  }
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// ---------------- USB scanner (keyboard wedge) ----------------
-usbInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    const value = usbInput.value.trim();
-    usbInput.value = "";
-    if (value) handleScan(value);
-  }
-});
+const TRCLOUD_SEARCH_ENDPOINT =
+  "https://thaidrill.trcloud.co/application/api-connector/end-point/engine-inventory/search-inventory.php";
+const TRCLOUD_MR_ENDPOINT =
+  "https://thaidrill.trcloud.co/application/api-connector/end-point/engine-mr/mr.php";
 
-// ---------------- Handle a scanned code ----------------
-let scanning = false;
-async function handleScan(code) {
-  if (scanning) return; // กันยิงซ้ำรัว ๆ ระหว่างรอ lookup
-  scanning = true;
-  showFeedback("ok", `ກຳລັງກວດ "${code}" ...`);
+function buildSecureKey(encryptHead, timestamp) {
+  const raw = `${encryptHead}t${timestamp}`;
+  return crypto.createHash("md5").update(raw).digest("hex");
+}
 
-  try {
-    const resp = await fetch(`/api/lookup?sku=${encodeURIComponent(code)}`);
-    const data = await resp.json();
+/**
+ * เรียก TRCloud API พร้อม:
+ * - ใส่ User-Agent แบบ browser (บาง endpoint ที่มี Cloudflare กั้นอยู่ จะบล็อก/ปฏิเสธ request
+ *   ที่ไม่มี User-Agent เหมือนคนใช้เบราว์เซอร์จริง เป็นระยะ)
+ * - retry อัตโนมัติสูงสุด 3 ครั้งถ้าเจอ error ชั่วคราว (network error, 5xx, หรือ body ว่าง/parse ไม่ได้)
+ * - อ่าน response เป็น text ก่อนเสมอ แล้วค่อยลอง parse JSON เพื่อให้เห็น raw response
+ *   จริงๆ ตอน debug ถ้า parse ไม่ผ่าน (ไม่ใช่เดาจาก error ทั่วไปแบบเดิม)
+ */
+async function callTRCloud(url, payload, { retries = 3, retryDelayMs = 1500 } = {}) {
+  const formData = new URLSearchParams();
+  formData.append("json", JSON.stringify(payload));
 
-    if (!resp.ok) {
-      showFeedback("err", data.error || "ບໍ່ພົບສິນຄ້າ");
-    } else {
-      addToCart(data);
-      showFeedback("ok", `✓ ${data.product_id} — ${data.product_name}`);
+  let lastError;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const trResp = await fetch(url, {
+        method: "POST",
+        headers: {
+          Origin: process.env.TRCLOUD_ORIGIN,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          Accept: "application/json, text/plain, */*",
+        },
+        body: formData.toString(),
+      });
+
+      const rawText = await trResp.text();
+
+      if (!rawText || !rawText.trim()) {
+        throw new Error(`TRCloud ตอบกลับเป็นค่าว่าง (HTTP ${trResp.status})`);
+      }
+
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        // แนบ raw response (ตัดให้สั้นลง) ไว้ใน error เพื่อ debug ได้ง่ายขึ้น
+        const snippet = rawText.slice(0, 300);
+        throw new Error(
+          `แปลงผลลัพธ์จาก TRCloud เป็น JSON ไม่ได้ (HTTP ${trResp.status}): ${snippet}`
+        );
+      }
+
+      return { ok: trResp.ok, status: trResp.status, data };
+    } catch (err) {
+      lastError = err;
+      console.error(`[callTRCloud] พยายามครั้งที่ ${attempt}/${retries} ล้มเหลว: ${err.message}`);
+      if (attempt < retries) {
+        await sleep(retryDelayMs);
+      }
     }
-  } catch (err) {
-    showFeedback("err", "ເຊື່ອມຕໍ່ບໍ່ສຳເລັດ: " + err.message);
-  } finally {
-    setTimeout(() => { scanning = false; }, 400);
-  }
-}
-
-function showFeedback(type, message) {
-  const el = document.getElementById("scan-feedback");
-  el.textContent = message;
-  el.className = `show ${type}`;
-}
-
-// ---------------- Cart management ----------------
-function addToCart(product) {
-  const existing = cart.find((it) => it.product_id === product.product_id);
-  if (existing) {
-    existing.quantity += 1;
-  } else {
-    cart.push({
-      product_id: product.product_id,
-      product_name: product.product_name,
-      unit: product.unit,
-      quantity: 1,
-    });
-  }
-  renderCart();
-}
-
-function changeQty(productId, delta) {
-  const item = cart.find((it) => it.product_id === productId);
-  if (!item) return;
-  item.quantity += delta;
-  if (item.quantity <= 0) {
-    cart = cart.filter((it) => it.product_id !== productId);
-  }
-  renderCart();
-}
-
-function removeItem(productId) {
-  cart = cart.filter((it) => it.product_id !== productId);
-  renderCart();
-}
-
-function renderCart() {
-  const list = document.getElementById("cart-list");
-  const count = document.getElementById("cart-count");
-  const submitBtn = document.getElementById("submit-btn");
-  const submitTotal = document.getElementById("submit-total");
-
-  count.textContent = `${cart.length} ລາຍການ`;
-  submitTotal.textContent = `${cart.length} ລາຍການ`;
-  submitBtn.disabled = cart.length === 0;
-
-  if (cart.length === 0) {
-    // ສ້າງ empty-state ຂຶ້ນໃໝ່ທຸກຄັ້ງ ແທນທີ່ຈະອີງໃສ່ node ເກົ່າທີ່ອາດຖືກລົບໄປແລ້ວ
-    // ໂດຍ innerHTML = "" ຄັ້ງກ່ອນໜ້າ (ນັ້ນຄືສາເຫດຂອງ appendChild(null) error)
-    list.innerHTML = `<div class="cart-empty" id="cart-empty">ຍັງບໍ່ມີລາຍການ — ເລີ່ມຍິງບາໂຄດເບື້ອງເທິງ</div>`;
-    return;
   }
 
-  list.innerHTML = "";
-  cart.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "cart-item";
-    row.innerHTML = `
-      <div class="info">
-        <div class="sku">${item.product_id}</div>
-        <div class="name">${item.product_name}</div>
-      </div>
-      <div class="qty-control">
-        <button class="qty-btn" data-action="dec" data-id="${item.product_id}">−</button>
-        <span class="qty-val">${item.quantity}</span>
-        <button class="qty-btn" data-action="inc" data-id="${item.product_id}">+</button>
-      </div>
-      <button class="remove-btn" data-action="remove" data-id="${item.product_id}">✕</button>
-    `;
-    list.appendChild(row);
-  });
+  throw lastError;
 }
 
-document.getElementById("cart-list").addEventListener("click", (e) => {
-  const btn = e.target.closest("button");
-  if (!btn) return;
-  const id = btn.dataset.id;
-  const action = btn.dataset.action;
-  if (action === "inc") changeQty(id, 1);
-  if (action === "dec") changeQty(id, -1);
-  if (action === "remove") removeItem(id);
-});
+// ຊື່ຊ່ອງລາຄາທຶນທີ່ TRCloud ອາດໃຊ້ — ລອງຕາມລຳດັບ ເອົາອັນທຳອິດທີ່ມີຄ່າ > 0
+const COST_FIELD_CANDIDATES = [
+  "std_cost",
+  "standard_cost",
+  "average_cost",
+  "avg_cost",
+  "cost",
+  "price",
+  "unit_price",
+];
 
-// ---------------- Submit ----------------
-document.getElementById("submit-btn").addEventListener("click", async () => {
-  const submitBtn = document.getElementById("submit-btn");
-  submitBtn.disabled = true;
-  submitBtn.textContent = "ກຳລັງສົ່ງ...";
+function pickCost(product) {
+  if (!product) return null;
+  for (const field of COST_FIELD_CANDIDATES) {
+    const raw = product[field];
+    if (raw === undefined || raw === null || raw === "") continue;
+    const num = Number(String(raw).replace(/,/g, ""));
+    if (Number.isFinite(num) && num > 0) {
+      return { value: num, field };
+    }
+  }
+  return null;
+}
+
+// ຄົ້ນຫາສິນຄ້າ 1 ລາຍການຈາກ TRCloud (ໃຊ້ຮ່ວມກັນລະຫວ່າງ /api/lookup ແລະ /api/submit-mr)
+async function searchProduct(sku) {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const secureKey = buildSecureKey(process.env.TRCLOUD_ENCRYPT_HEAD, timestamp);
 
   const payload = {
-    items: cart,
-    request_by: document.getElementById("f-request-by").value,
-    warehouse: document.getElementById("f-warehouse").value,
-    purpose: document.getElementById("f-purpose").value,
-    department: document.getElementById("f-department").value,
-    project: document.getElementById("f-project").value,
-    salesman: document.getElementById("f-salesman").value,
-    accounting_formula: document.getElementById("f-formula").value,
+    company_id: process.env.TRCLOUD_COMPANY_ID,
+    passkey: process.env.TRCLOUD_PASSKEY,
+    securekey: secureKey,
+    timestamp,
+    keyword: sku,
+    start: 0,
+  };
+
+  const { data } = await callTRCloud(TRCLOUD_SEARCH_ENDPOINT, payload);
+  if (data.success !== 1) return null;
+
+  const results = data.result || [];
+  return results.find((p) => p.product_id === sku) || results[0] || null;
+}
+
+// ---------------- GET /api/lookup?sku=... ----------------
+app.get("/api/lookup", async (req, res) => {
+  const sku = (req.query.sku || "").toString().trim();
+  if (!sku) {
+    return res.status(400).json({ error: "กรุณาระบุ sku" });
+  }
+
+  try {
+    const product = await searchProduct(sku);
+
+    if (!product) {
+      return res.status(404).json({ error: `ไม่พบสินค้ารหัส "${sku}" ในระบบ` });
+    }
+
+    const cost = pickCost(product);
+    // log ຊື່ຊ່ອງທັງໝົດທີ່ TRCloud ສົ່ງມາ ເພື່ອໃຫ້ຮູ້ວ່າຊ່ອງລາຄາທຶນຊື່ຫຍັງແທ້ (ເບິ່ງໃນ Render > Logs)
+    console.log(`[/api/lookup] ${sku} fields:`, Object.keys(product).join(", "));
+    console.log(`[/api/lookup] ${sku} cost:`, cost ? `${cost.value} (${cost.field})` : "ບໍ່ພົບ");
+
+    return res.status(200).json({
+      product_id: product.product_id,
+      product_name: product.product_name,
+      balance: product.balance,
+      unit: product.unit,
+      cost: cost ? cost.value : null,
+    });
+  } catch (err) {
+    console.error("[/api/lookup] error:", err.message);
+    return res.status(502).json({ error: `เชื่อมต่อ TRCloud ไม่สำเร็จ: ${err.message}` });
+  }
+});
+
+// ---------------- POST /api/submit-mr ----------------
+app.post("/api/submit-mr", async (req, res) => {
+  const { items, request_by, purpose } = req.body || {};
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: "ไม่มีรายการสินค้าในตะกร้า" });
+  }
+
+  for (const it of items) {
+    if (!it.product_id || !it.quantity || Number(it.quantity) <= 0) {
+      return res.status(400).json({ error: "รายการสินค้าต้องมี product_id และ quantity มากกว่า 0" });
+    }
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const secureKey = buildSecureKey(process.env.TRCLOUD_ENCRYPT_HEAD, timestamp);
+  const today = new Date().toISOString().slice(0, 10);
+
+  // ດຶງລາຄາທຶນຂອງແຕ່ລະລາຍການຈາກ TRCloud ກ່ອນສົ່ງ
+  // (TRCloud ບໍ່ໄດ້ຕື່ມລາຄາໃຫ້ອັດຕະໂນມັດ ຈຶ່ງເຫັນ 0.00 ໃນໃບເບີກ — ຕ້ອງສົ່ງໄປເອງ)
+  // ຖ້າດຶງບໍ່ໄດ້ ຈະປ່ອຍຫວ່າງໄວ້ ແລ້ວປ່ອຍໃຫ້ TRCloud ຈັດການເອງ ບໍ່ໃຫ້ການເບີກລົ້ມເຫລວ
+  const productLines = [];
+  for (const it of items) {
+    let unitCost = it.cost !== undefined && it.cost !== null ? Number(it.cost) : null;
+
+    if (!Number.isFinite(unitCost) || unitCost <= 0) {
+      try {
+        const found = await searchProduct(it.product_id);
+        const cost = pickCost(found);
+        unitCost = cost ? cost.value : null;
+      } catch (err) {
+        console.error(`[submit-mr] ດຶງລາຄາ ${it.product_id} ບໍ່ສຳເລັດ:`, err.message);
+        unitCost = null;
+      }
+    }
+
+    const qty = Number(it.quantity);
+    const line = {
+      id: it.product_id,
+      product: it.product_name || it.product_id,
+      quantity: String(qty),
+      warehouse: FIXED_WAREHOUSE,
+      remark: "",
+      serial: "",
+    };
+
+    if (Number.isFinite(unitCost) && unitCost > 0) {
+      line.price = String(unitCost);
+      line.amount = String(unitCost * qty);
+    }
+
+    console.log(
+      `[submit-mr] ${it.product_id} x${qty} ລາຄາ/ໜ່ວຍ:`,
+      line.price !== undefined ? line.price : "ບໍ່ພົບ (ປ່ອຍຫວ່າງ)"
+    );
+    productLines.push(line);
+  }
+
+  const payload = {
+    company_id: process.env.TRCLOUD_COMPANY_ID,
+    passkey: process.env.TRCLOUD_PASSKEY,
+    securekey: secureKey,
+    timestamp,
+    accounting_formula: FIXED_ACCOUNTING_FORMULA,
+    gl_entry: "yes",
+    date: today,
+    contact_id: "0",
+    company_format: "MR",
+    document_number: generateDocumentNumber(),
+    status: FIXED_STATUS,
+    request_by: request_by || "",
+    purpose: purpose || "",
+    client_name: "",
+    client_telephone: "",
+    description: "",
+    salesman: FIXED_SALESMAN,
+    department: FIXED_DEPARTMENT,
+    project: FIXED_PROJECT,
+    warehouse: FIXED_WAREHOUSE,
+    url: "",
+    approve_status: "",
+    c1: "",
+    c2: "",
+    c3: "",
+    c4: "",
+    c5: "",
+    product: productLines,
   };
 
   try {
-    const resp = await fetch("/api/submit-mr", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await resp.json();
-
-    if (resp.ok && data.success === 1) {
-      showModal(true, "ເບີກສິນຄ້າສຳເລັດ", data.message || JSON.stringify(data));
-      cart = [];
-      renderCart();
-    } else {
-      showModal(false, "ສົ່ງບໍ່ສຳເລັດ", data.message || data.error || JSON.stringify(data));
-    }
+    const { data } = await callTRCloud(TRCLOUD_MR_ENDPOINT, payload);
+    return res.status(200).json(data);
   } catch (err) {
-    showModal(false, "ເຊື່ອມຕໍ່ບໍ່ສຳເລັດ", err.message);
-  } finally {
-    submitBtn.textContent = "ຢືນຢັນເບີກສິນຄ້າ";
-    submitBtn.disabled = cart.length === 0;
+    console.error("[/api/submit-mr] error:", err.message);
+    return res.status(502).json({ error: `เชื่อมต่อ TRCloud ไม่สำเร็จ: ${err.message}` });
   }
 });
 
-function showModal(ok, title, detail) {
-  document.getElementById("modal-icon").textContent = ok ? "✅" : "⚠️";
-  document.getElementById("modal-title").textContent = title;
-  document.getElementById("modal-detail").textContent = detail;
-  document.getElementById("result-modal").classList.add("show");
-}
-document.getElementById("modal-close").addEventListener("click", () => {
-  document.getElementById("result-modal").classList.remove("show");
+// health check เผื่อ Render ping ตรวจสอบ
+app.get("/healthz", (req, res) => res.status(200).send("ok"));
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-// ---------------- Dropdown options (warehouse / department / project / salesman) ----------------
-function fillSelect(select, list, emptyLabel, notFoundLabel) {
-  select.innerHTML = "";
-  if (!list || list.length === 0) {
-    select.innerHTML = `<option value="">${notFoundLabel}</option>`;
-    return;
-  }
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = emptyLabel;
-  select.appendChild(placeholder);
-  list.forEach((name) => {
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    select.appendChild(opt);
-  });
-}
-
-async function loadFormOptions() {
-  const warehouseSel = document.getElementById("f-warehouse");
-  const departmentSel = document.getElementById("f-department");
-  const projectSel = document.getElementById("f-project");
-  const salesmanSel = document.getElementById("f-salesman");
-  const formulaSel = document.getElementById("f-formula");
-
-  try {
-    const resp = await fetch("/api/form-options");
-    const data = await resp.json();
-
-    fillSelect(warehouseSel, data.warehouses, "-- ເລືອກຄັງ --", "-- ບໍ່ພົບຄັງໃນລະບົບ --");
-    fillSelect(departmentSel, data.departments, "-- ເລືອກແຜນກ (ບໍ່ບັງຄັບ) --", "-- ບໍ່ພົບແຜນກ --");
-    fillSelect(projectSel, data.projects, "-- ເລືອກໂຄງການ (ບໍ່ບັງຄັບ) --", "-- ບໍ່ພົບໂຄງການ --");
-    fillSelect(salesmanSel, data.salesmen, "-- ເລືອກພະນັກງານຂາຍ (ບໍ່ບັງຄັບ) --", "-- ບໍ່ພົບລາຍຊື່ --");
-
-    // สูตรบัญชี: ไม่มี placeholder ว่าง ให้เลือกตัวแรกเป็นค่าเริ่มต้นเสมอ (ต้องมีค่าส่งไป TRCloud)
-    formulaSel.innerHTML = "";
-    const formulas = data.accounting_formulas || [];
-    if (formulas.length === 0) {
-      formulaSel.innerHTML = `<option value="mr">mr (ຄ່າເລີ່ມຕົ້ນ)</option>`;
-    } else {
-      formulas.forEach((name) => {
-        const opt = document.createElement("option");
-        opt.value = name;
-        opt.textContent = name;
-        formulaSel.appendChild(opt);
-      });
-    }
-  } catch (err) {
-    [warehouseSel, departmentSel, projectSel, salesmanSel, formulaSel].forEach((sel) => {
-      sel.innerHTML = `<option value="">-- ໂຫລດຂໍ້ມູນບໍ່ສຳເລັດ --</option>`;
-    });
-  }
-}
-
-// ---------------- Init ----------------
-loadFormOptions();
-startCamera();
-</script>
-
-</body>
-</html>
