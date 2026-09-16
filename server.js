@@ -223,7 +223,7 @@ app.get("/api/lookup", async (req, res) => {
 
 // ---------------- POST /api/submit-mr ----------------
 app.post("/api/submit-mr", async (req, res) => {
-  const { items, request_by, purpose, client_name } = req.body || {};
+  const { items, request_by, purpose, name } = req.body || {};
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "ไม่มีรายการสินค้าในตะกร้า" });
