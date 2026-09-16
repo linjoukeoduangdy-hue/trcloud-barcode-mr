@@ -395,6 +395,10 @@
 
   <div class="info-form">
     <div>
+      <label>ຊື່ (name)</label>
+      <input id="f-name" type="text" placeholder="ຊື່ເອກະສານ" />
+    </div>
+    <div>
       <label>ຜູ້ເບີກ (request_by)</label>
       <input id="f-request-by" type="text" placeholder="ຊື່ຜູ້ເບີກ" />
     </div>
@@ -615,6 +619,7 @@ document.getElementById("submit-btn").addEventListener("click", async () => {
 
   const payload = {
     items: cart,
+    name: document.getElementById("f-name").value,
     request_by: document.getElementById("f-request-by").value,
     purpose: document.getElementById("f-purpose").value,
   };
@@ -660,13 +665,13 @@ async function loadFixedInfo() {
     const d = await resp.json();
     box.innerHTML = `
       ຄັງສິນຄ້າ: <b></b><br>
-      ໂຄງການ: <b></b><br>
+      ແຜນກ: <b></b><br>
       ສູດບັນຊີ: <b></b><br>
       ສະຖານະ: <b></b>
     `;
     const slots = box.querySelectorAll("b");
     slots[0].textContent = d.warehouse || "-";
-    slots[1].textContent = d.project || "-";
+    slots[1].textContent = d.department || "-";
     slots[2].textContent = d.accounting_formula || "-";
     slots[3].textContent = d.status || "-";
   } catch (err) {
