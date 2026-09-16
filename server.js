@@ -299,7 +299,7 @@ app.post("/api/submit-mr", async (req, res) => {
     name: name || "",
     request_by: request_by || "",
     purpose: purpose || "",
-    client_name: "",
+    client_name: name || "",
     client_telephone: "",
     description: "",
     salesman: FIXED_SALESMAN,
