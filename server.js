@@ -4,7 +4,6 @@
 
 import express from "express";
 import crypto from "crypto";
-import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -18,129 +17,58 @@ app.use(express.static(path.join(__dirname, "public")));
 const PORT = process.env.PORT || 3000;
 
 // =================================================================
-// ---------------- Dropdown option lists (ແກ້ໄດ້ຜ່ານໜ້າ /admin.html) ----------------
-// ຄ່າໃນນີ້ຕ້ອງພິມໃຫ້ "ກົງກັບໃນ TRCloud ຮ້ອຍເປີເຊັນ" (ໂຕພິມນ້ອຍ/ໃຫຍ່, ວັນນະຍຸດ, ຂີດກາງ)
-// ຄັ້ງທຳອິດທີ່ເປີດ server ຄ່າຈະຖືກສ້າງຈາກ DEFAULT_* ຫລື env var ຂ້າງລຸ່ມ ແລ້ວບັນທຶກລົງໄຟລ໌
-// options-store.json ໄວ້, ຈາກນັ້ນໄປແກ້ໄຂ/ເພີ່ມໄດ້ຈາກໜ້າ /admin.html ໂດຍກົງ ບໍ່ຕ້ອງແກ້ໂຄ້ດອີກ
+// ---------------- ຄ່າຄົງທີ່ (fixed values) ----------------
+// ຄ່າເຫລົ່ານີ້ຖືກ fix ໄວ້ຢູ່ server ແລ້ວ ບໍ່ມີຊ່ອງໃຫ້ເລືອກໃນໜ້າເວັບ
+// ຕ້ອງພິມໃຫ້ "ກົງກັບໃນ TRCloud ຮ້ອຍເປີເຊັນ" (ໂຕພິມນ້ອຍ/ໃຫຍ່, ວັນນະຍຸດ, ຂີດກາງ)
+// ຖ້າຢາກປ່ຽນ ໂດຍບໍ່ຕ້ອງແກ້ໂຄ້ດ ໃຫ້ຕັ້ງ env var ທີ່ກ່ຽວຂ້ອງໃນ Render
 // =================================================================
-const OPTIONS_FILE = path.join(__dirname, "options-store.json");
+const FIXED_WAREHOUSE = process.env.TRCLOUD_WAREHOUSE || "คลังเซโปน";
+const FIXED_PROJECT = process.env.TRCLOUD_PROJECT || "โครงการเซโปน-แท่งคำและนาลู";
+const FIXED_DEPARTMENT = process.env.TRCLOUD_DEPARTMENT || "";
+const FIXED_SALESMAN = process.env.TRCLOUD_SALESMAN || "";
+const FIXED_ACCOUNTING_FORMULA =
+  process.env.TRCLOUD_ACCOUNTING_FORMULA || "Internal Issue_ค่าวัสดุสิ้นเปลือง";
+const FIXED_STATUS = process.env.TRCLOUD_STATUS || "ขนส่งเสร็จสิ้น";
 
-const DEFAULT_OPTIONS = {
-  warehouses: parseListEnv(process.env.TRCLOUD_WAREHOUSES, ["คลังเซโปน"]),
-  departments: parseListEnv(process.env.TRCLOUD_DEPARTMENTS, [""]),
-  projects: parseListEnv(process.env.TRCLOUD_PROJECTS, ["โครงการเซโปน-แท่งคำและนาลู"]),
-  salesmen: parseListEnv(process.env.TRCLOUD_SALESMEN, [""]),
-  accounting_formulas: parseListEnv(process.env.TRCLOUD_ACCOUNTING_FORMULAS, [""]),
-};
-
-function parseListEnv(envVal, fallback) {
-  return envVal
-    ? envVal.split(",").map((w) => w.trim()).filter(Boolean)
-    : fallback;
-}
-
-function loadOptions() {
-  try {
-    const raw = fs.readFileSync(OPTIONS_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    // ผสานกับ DEFAULT_OPTIONS เผื่อไฟล์เก่าขาดคีย์ใหม่ (เช่น accounting_formulas ที่เพิ่งเพิ่ม)
-    return { ...DEFAULT_OPTIONS, ...parsed };
-  } catch {
-    return { ...DEFAULT_OPTIONS };
-  }
-}
-
-function saveOptions(options) {
-  fs.writeFileSync(OPTIONS_FILE, JSON.stringify(options, null, 2), "utf8");
-}
-
-let OPTIONS = loadOptions();
-saveOptions(OPTIONS); // ให้แน่ใจว่าไฟล์มีอยู่ตั้งแต่แรกเริ่ม
-
-// ADMIN_KEY: กันไม่ให้ใครก็ได้เข้ามาแก้ dropdown ได้ผ่าน /admin.html
-// ตั้ง env var ADMIN_KEY ใน Render เป็นรหัสที่เจ้าเลือกเอง แล้วใช้รหัสเดียวกันตอนล็อกอินหน้า admin
-const ADMIN_KEY = process.env.ADMIN_KEY || "changeme";
-
-function checkAdminKey(req, res, next) {
-  const key = req.headers["x-admin-key"] || "";
-  if (key !== ADMIN_KEY) {
-    return res.status(401).json({ error: "ລະຫັດ admin ບໍ່ຖືກຕ້ອງ" });
-  }
-  next();
-}
-
+// ສະແດງຄ່າຄົງທີ່ໃຫ້ໜ້າເວັບອ່ານໄປສະແດງ (ອ່ານຢ່າງດຽວ ແກ້ຜ່ານໜ້າເວັບບໍ່ໄດ້)
 app.get("/api/form-options", (req, res) => {
-  res.status(200).json(OPTIONS);
-});
-
-app.get("/api/admin/options", checkAdminKey, (req, res) => {
-  res.status(200).json(OPTIONS);
-});
-
-app.post("/api/admin/options", checkAdminKey, (req, res) => {
-  const body = req.body || {};
-  const fields = ["warehouses", "departments", "projects", "salesmen", "accounting_formulas"];
-  const next = { ...OPTIONS };
-
-  for (const field of fields) {
-    if (Array.isArray(body[field])) {
-      next[field] = body[field]
-        .map((v) => String(v).trim())
-        .filter(Boolean);
-    }
-  }
-
-  try {
-    saveOptions(next);
-    OPTIONS = next;
-    return res.status(200).json({ success: true, options: OPTIONS });
-  } catch (err) {
-    return res.status(500).json({ error: `ບັນທຶກບໍ່ສຳເລັດ: ${err.message}` });
-  }
+  res.status(200).json({
+    warehouse: FIXED_WAREHOUSE,
+    project: FIXED_PROJECT,
+    department: FIXED_DEPARTMENT,
+    salesman: FIXED_SALESMAN,
+    accounting_formula: FIXED_ACCOUNTING_FORMULA,
+    status: FIXED_STATUS,
+  });
 });
 
 // =================================================================
 // ---------------- ເລກທີ MR (document_number) ----------------
-// ຮູບແບບ: YYMMDD + ເລກແລ່ນຕໍ່ພາຍໃນມື້ນັ້ນ (ຣີເຊັດເປັນ 01 ທຸກມື້ໃໝ່) ເຊັ່ນ 26091601, 26091602, ...
-// ໝາຍເຫດ: ນັບຕໍ່ຈາກໄຟລ໌ mr-counter.json ຢູ່ໃນ server — ຖ້າ Render redeploy ໂຄ້ດໃໝ່
-// (ບໍ່ແມ່ນແຄ່ sleep/wake ທຳມະດາ) ໄຟລ໌ນີ້ອາດຖືກລ້າງ ແລະ ນັບເລີ່ມ 01 ຄືນອີກໃນມື້ນັ້ນ
+// ວິທີເກົ່າ (ສ້າງເລກເອງຈາກໄຟລ໌ນັບ) ເຮັດໃຫ້ເລກຊ້ຳກັນ ແລະ ຕັດສະຕ໊ອກບໍ່ໄດ້ ເພາະ:
+//   - Render Free Tier ລ້າງ disk ທຸກຄັ້ງທີ່ redeploy ຕົວນັບຈຶ່ງເລີ່ມ 01 ຄືນໃໝ່
+//   - ຕົວນັບຂອງເຮົາບໍ່ຮູ້ຈັກເລກທີ່ TRCloud ອອກເອງ (ຈາກການສ້າງໃບດ້ວຍມື)
+// ວິທີໃໝ່: ສົ່ງ document_number ເປັນຄ່າຫວ່າງ ໃຫ້ TRCloud ລັນເລກເອງຕໍ່ຈາກລະບົບຂອງມັນ
+// (ໃນໜ້າ TRCloud ຊ່ອງເລກໃບເບີກຕັ້ງເປັນ "number only - AUTO" ຢູ່ແລ້ວ)
+// ຖ້າຢາກກັບໄປໃສ່ເລກເອງ ໃຫ້ຕັ້ງ env var TRCLOUD_DOC_NUMBER_MODE=manual
 // =================================================================
-const COUNTER_FILE = path.join(__dirname, "mr-counter.json");
-
-function loadCounterState() {
-  try {
-    const raw = fs.readFileSync(COUNTER_FILE, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return { date: "", count: 0 };
-  }
-}
-
-function saveCounterState(state) {
-  try {
-    fs.writeFileSync(COUNTER_FILE, JSON.stringify(state), "utf8");
-  } catch (err) {
-    console.error("[counter] ບັນທຶກໄຟລ໌ຕົວນັບບໍ່ສຳເລັດ:", err.message);
-  }
-}
+const DOC_NUMBER_MODE = process.env.TRCLOUD_DOC_NUMBER_MODE || "auto";
 
 function generateDocumentNumber() {
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const dateKey = `${yy}${mm}${dd}`;
-
-  const state = loadCounterState();
-  if (state.date !== dateKey) {
-    state.date = dateKey;
-    state.count = 0;
+  if (DOC_NUMBER_MODE !== "manual") {
+    return ""; // ໃຫ້ TRCloud ລັນເລກເອງ — ກັນເລກຊ້ຳໄດ້ແນ່ນອນທີ່ສຸດ
   }
-  state.count += 1;
-  saveCounterState(state);
-
-  const seq = String(state.count).padStart(2, "0");
-  return `${dateKey}${seq}`;
+  // manual: YYMMDD + HHMMSS + ເລກສຸ່ມ 3 ໂຕ (ໂອກາດຊ້ຳຕ່ຳຫລາຍ ແຕ່ບໍ່ຮັບປະກັນ 100%)
+  const now = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const stamp =
+    String(now.getFullYear()).slice(-2) +
+    p(now.getMonth() + 1) +
+    p(now.getDate()) +
+    p(now.getHours()) +
+    p(now.getMinutes()) +
+    p(now.getSeconds());
+  const rand = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
+  return `${stamp}${rand}`;
 }
 
 function sleep(ms) {
@@ -215,13 +143,32 @@ async function callTRCloud(url, payload, { retries = 3, retryDelayMs = 1500 } = 
   throw lastError;
 }
 
-// ---------------- GET /api/lookup?sku=... ----------------
-app.get("/api/lookup", async (req, res) => {
-  const sku = (req.query.sku || "").toString().trim();
-  if (!sku) {
-    return res.status(400).json({ error: "กรุณาระบุ sku" });
-  }
+// ຊື່ຊ່ອງລາຄາທຶນທີ່ TRCloud ອາດໃຊ້ — ລອງຕາມລຳດັບ ເອົາອັນທຳອິດທີ່ມີຄ່າ > 0
+const COST_FIELD_CANDIDATES = [
+  "std_cost",
+  "standard_cost",
+  "average_cost",
+  "avg_cost",
+  "cost",
+  "price",
+  "unit_price",
+];
 
+function pickCost(product) {
+  if (!product) return null;
+  for (const field of COST_FIELD_CANDIDATES) {
+    const raw = product[field];
+    if (raw === undefined || raw === null || raw === "") continue;
+    const num = Number(String(raw).replace(/,/g, ""));
+    if (Number.isFinite(num) && num > 0) {
+      return { value: num, field };
+    }
+  }
+  return null;
+}
+
+// ຄົ້ນຫາສິນຄ້າ 1 ລາຍການຈາກ TRCloud (ໃຊ້ຮ່ວມກັນລະຫວ່າງ /api/lookup ແລະ /api/submit-mr)
+async function searchProduct(sku) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const secureKey = buildSecureKey(process.env.TRCLOUD_ENCRYPT_HEAD, timestamp);
 
@@ -234,26 +181,38 @@ app.get("/api/lookup", async (req, res) => {
     start: 0,
   };
 
+  const { data } = await callTRCloud(TRCLOUD_SEARCH_ENDPOINT, payload);
+  if (data.success !== 1) return null;
+
+  const results = data.result || [];
+  return results.find((p) => p.product_id === sku) || results[0] || null;
+}
+
+// ---------------- GET /api/lookup?sku=... ----------------
+app.get("/api/lookup", async (req, res) => {
+  const sku = (req.query.sku || "").toString().trim();
+  if (!sku) {
+    return res.status(400).json({ error: "กรุณาระบุ sku" });
+  }
+
   try {
-    const { data } = await callTRCloud(TRCLOUD_SEARCH_ENDPOINT, payload);
-
-    if (data.success !== 1) {
-      return res.status(404).json({ error: data.message || "ไม่พบสินค้า" });
-    }
-
-    const results = data.result || [];
-    const exact = results.find((p) => p.product_id === sku);
-    const product = exact || results[0];
+    const product = await searchProduct(sku);
 
     if (!product) {
       return res.status(404).json({ error: `ไม่พบสินค้ารหัส "${sku}" ในระบบ` });
     }
+
+    const cost = pickCost(product);
+    // log ຊື່ຊ່ອງທັງໝົດທີ່ TRCloud ສົ່ງມາ ເພື່ອໃຫ້ຮູ້ວ່າຊ່ອງລາຄາທຶນຊື່ຫຍັງແທ້ (ເບິ່ງໃນ Render > Logs)
+    console.log(`[/api/lookup] ${sku} fields:`, Object.keys(product).join(", "));
+    console.log(`[/api/lookup] ${sku} cost:`, cost ? `${cost.value} (${cost.field})` : "ບໍ່ພົບ");
 
     return res.status(200).json({
       product_id: product.product_id,
       product_name: product.product_name,
       balance: product.balance,
       unit: product.unit,
+      cost: cost ? cost.value : null,
     });
   } catch (err) {
     console.error("[/api/lookup] error:", err.message);
@@ -263,16 +222,7 @@ app.get("/api/lookup", async (req, res) => {
 
 // ---------------- POST /api/submit-mr ----------------
 app.post("/api/submit-mr", async (req, res) => {
-  const {
-    items,
-    warehouse,
-    request_by,
-    purpose,
-    department,
-    project,
-    salesman,
-    accounting_formula,
-  } = req.body || {};
+  const { items, request_by, purpose } = req.body || {};
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "ไม่มีรายการสินค้าในตะกร้า" });
@@ -288,27 +238,67 @@ app.post("/api/submit-mr", async (req, res) => {
   const secureKey = buildSecureKey(process.env.TRCLOUD_ENCRYPT_HEAD, timestamp);
   const today = new Date().toISOString().slice(0, 10);
 
+  // ດຶງລາຄາທຶນຂອງແຕ່ລະລາຍການຈາກ TRCloud ກ່ອນສົ່ງ
+  // (TRCloud ບໍ່ໄດ້ຕື່ມລາຄາໃຫ້ອັດຕະໂນມັດ ຈຶ່ງເຫັນ 0.00 ໃນໃບເບີກ — ຕ້ອງສົ່ງໄປເອງ)
+  // ຖ້າດຶງບໍ່ໄດ້ ຈະປ່ອຍຫວ່າງໄວ້ ແລ້ວປ່ອຍໃຫ້ TRCloud ຈັດການເອງ ບໍ່ໃຫ້ການເບີກລົ້ມເຫລວ
+  const productLines = [];
+  for (const it of items) {
+    let unitCost = it.cost !== undefined && it.cost !== null ? Number(it.cost) : null;
+
+    if (!Number.isFinite(unitCost) || unitCost <= 0) {
+      try {
+        const found = await searchProduct(it.product_id);
+        const cost = pickCost(found);
+        unitCost = cost ? cost.value : null;
+      } catch (err) {
+        console.error(`[submit-mr] ດຶງລາຄາ ${it.product_id} ບໍ່ສຳເລັດ:`, err.message);
+        unitCost = null;
+      }
+    }
+
+    const qty = Number(it.quantity);
+    const line = {
+      id: it.product_id,
+      product: it.product_name || it.product_id,
+      quantity: String(qty),
+      warehouse: FIXED_WAREHOUSE,
+      remark: "",
+      serial: "",
+    };
+
+    if (Number.isFinite(unitCost) && unitCost > 0) {
+      line.price = String(unitCost);
+      line.amount = String(unitCost * qty);
+    }
+
+    console.log(
+      `[submit-mr] ${it.product_id} x${qty} ລາຄາ/ໜ່ວຍ:`,
+      line.price !== undefined ? line.price : "ບໍ່ພົບ (ປ່ອຍຫວ່າງ)"
+    );
+    productLines.push(line);
+  }
+
   const payload = {
     company_id: process.env.TRCLOUD_COMPANY_ID,
     passkey: process.env.TRCLOUD_PASSKEY,
     securekey: secureKey,
     timestamp,
-    accounting_formula: accounting_formula || "mr",
+    accounting_formula: FIXED_ACCOUNTING_FORMULA,
     gl_entry: "yes",
     date: today,
     contact_id: "0",
     company_format: "MR",
     document_number: generateDocumentNumber(),
-    status: "ขนส่งเสร็จสิ้น",
+    status: FIXED_STATUS,
     request_by: request_by || "",
     purpose: purpose || "",
     client_name: "",
     client_telephone: "",
     description: "",
-    salesman: salesman || "",
-    department: department || "",
-    project: project || "",
-    warehouse: warehouse || "",
+    salesman: FIXED_SALESMAN,
+    department: FIXED_DEPARTMENT,
+    project: FIXED_PROJECT,
+    warehouse: FIXED_WAREHOUSE,
     url: "",
     approve_status: "",
     c1: "",
@@ -316,14 +306,7 @@ app.post("/api/submit-mr", async (req, res) => {
     c3: "",
     c4: "",
     c5: "",
-    product: items.map((it) => ({
-      id: it.product_id,
-      product: it.product_name || it.product_id,
-      quantity: String(it.quantity),
-      warehouse: warehouse || "",
-      remark: "",
-      serial: "",
-    })),
+    product: productLines,
   };
 
   try {
