@@ -59,6 +59,22 @@
     font-family: var(--mono);
   }
 
+  .user-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logout-btn {
+    background: var(--panel-2);
+    color: var(--text-dim);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .logout-btn:hover { color: var(--red); border-color: var(--red); }
+
   .net-status {
     display: flex;
     align-items: center;
@@ -413,7 +429,10 @@
 
 <header>
   <h1>ຕັດສະຕ໊ອກດ້ວຍບາໂຄດ</h1>
-  <span class="sub">TRCloud MR</span>
+  <span class="user-box">
+    <span id="user-name" class="sub"></span>
+    <button id="logout-btn" class="logout-btn">ອອກລະບົບ</button>
+  </span>
 </header>
 
 <div id="net-status" class="net-status">
@@ -582,6 +601,12 @@ async function handleScan(code) {
 
   try {
     const resp = await fetch(`/api/lookup?sku=${encodeURIComponent(code)}`);
+
+    if (resp.status === 401) {
+      window.location.href = "/login.html";
+      return;
+    }
+
     const data = await resp.json();
 
     if (!resp.ok) {
@@ -733,6 +758,9 @@ async function postSubmitMR(payload) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (resp.status === 401) {
+      return { networkError: false, sessionExpired: true };
+    }
     const data = await resp.json();
     return { networkError: false, ok: resp.ok, data };
   } catch (err) {
@@ -757,6 +785,12 @@ async function flushQueue() {
 
     if (result.networkError) {
       break; // ยังออฟไลน์อยู่จริง — เลิกลอง ไว้รอบหน้า
+    }
+
+    if (result.sessionExpired) {
+      // session ໝົດອາຍຸ — ຄ້າງລາຍການໄວ້ໃນຄິວ (ບໍ່ລົບ) ແລ້ວໃຫ້ login ໃໝ່ກ່ອນ ຈະສົ່ງຄືນຄັ້ງຕໍ່ໄປ
+      window.location.href = "/login.html";
+      break;
     }
 
     // ไม่ว่าจะสำเร็จหรือ TRCloud ปฏิเสธ ก็นำออกจากคิว (ส่งซ้ำเหมือนเดิมจะไม่ทำให้ผลต่างไปจากเดิม)
@@ -906,7 +940,41 @@ async function loadFixedInfo() {
   }
 }
 
+// ---------------- ຜູ້ໃຊ້ທີ່ login ຢູ່ ----------------
+const USER_CACHE_KEY = "trcloud-current-user";
+
+async function loadCurrentUser() {
+  try {
+    const resp = await fetch("/api/me");
+    if (resp.status === 401) {
+      // session ໝົດອາຍຸ ຫລືຍັງບໍ່ login ແທ້ — ສົ່ງໄປໜ້າ login
+      window.location.href = "/login.html";
+      return;
+    }
+    const data = await resp.json();
+    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data));
+    document.getElementById("user-name").textContent = `👤 ${data.display_name}`;
+  } catch (err) {
+    // ອອບລາຍ — ບໍ່ຮູ້ວ່າ session ຍັງໃຊ້ໄດ້ບໍ, ໃຫ້ໃຊ້ຄ່າແຄຊ໌ໄວ້ສະແດງ ບໍ່ redirect ຫນີໄປ
+    try {
+      const cached = JSON.parse(localStorage.getItem(USER_CACHE_KEY));
+      if (cached) {
+        document.getElementById("user-name").textContent = `👤 ${cached.display_name} (ອອບລາຍ)`;
+      }
+    } catch {}
+  }
+}
+
+document.getElementById("logout-btn").addEventListener("click", async () => {
+  try {
+    await fetch("/api/logout", { method: "POST" });
+  } catch {}
+  localStorage.removeItem(USER_CACHE_KEY);
+  window.location.href = "/login.html";
+});
+
 // ---------------- Init ----------------
+loadCurrentUser();
 loadFixedInfo();
 startCamera();
 updateNetStatus();
