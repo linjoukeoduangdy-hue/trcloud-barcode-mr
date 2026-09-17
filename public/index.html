@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
 <title>ตัดสต๊อก · TRCloud</title>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="/html5-qrcode.min.js" defer></script>
 <style>
   :root {
     --bg: #14181c;
@@ -976,8 +976,14 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
 // ---------------- Init ----------------
 loadCurrentUser();
 loadFixedInfo();
-startCamera();
 updateNetStatus();
+
+// html5-qrcode ຖືກໂຫລດແບບ defer (ບໍ່ບລັອກໜ້າເວັບ) — ຕ້ອງລໍໃຫ້ໂຫລດແລ້ວກ່ອນຈຶ່ງເອີ້ນ startCamera()
+if (typeof Html5Qrcode !== "undefined") {
+  startCamera();
+} else {
+  window.addEventListener("load", startCamera);
+}
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
