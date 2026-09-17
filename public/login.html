@@ -1,1 +1,126 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<title>ລ໋ອກອິນ · TRCloud MR</title>
+<style>
+  :root {
+    --bg: #14181c;
+    --panel: #1c2126;
+    --panel-2: #232a31;
+    --line: #303941;
+    --text: #e9edf1;
+    --text-dim: #8b98a3;
+    --amber: #f2b705;
+    --red: #e6584b;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: var(--sans); height: 100%;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px 24px;
+    width: 100%;
+    max-width: 340px;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; text-align: center; }
+  .sub { font-size: 12px; color: var(--text-dim); font-family: var(--mono); text-align: center; margin-bottom: 22px; }
+  label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  input {
+    width: 100%; padding: 12px; margin-bottom: 14px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    color: var(--text); font-size: 15px; outline: none;
+  }
+  input:focus { border-color: var(--amber); }
+  button {
+    width: 100%; padding: 14px; border-radius: 8px; border: none;
+    background: var(--amber); color: #1a1400; font-weight: 700; font-size: 15px; cursor: pointer;
+  }
+  button:disabled { background: var(--line); color: var(--text-dim); cursor: not-allowed; }
+  #error {
+    display: none; background: rgba(230,88,75,0.12); color: var(--red);
+    border: 1px solid rgba(230,88,75,0.3); border-radius: 8px;
+    padding: 10px 12px; font-size: 13px; margin-bottom: 14px;
+  }
+  #error.show { display: block; }
+</style>
+</head>
+<body>
 
+<div class="card">
+  <h1>🔒 ລ໋ອກອິນ</h1>
+  <div class="sub">TRCloud MR — ຕັດສະຕ໊ອກດ້ວຍບາໂຄດ</div>
+
+  <div id="error"></div>
+
+  <label>ຊື່ຜູ້ໃຊ້</label>
+  <input id="username" type="text" autocomplete="username" autofocus />
+
+  <label>ລະຫັດຜ່ານ</label>
+  <input id="password" type="password" autocomplete="current-password" />
+
+  <button id="login-btn">ເຂົ້າສູ່ລະບົບ</button>
+</div>
+
+<script>
+const errorBox = document.getElementById("error");
+const usernameInput = document.getElementById("username");
+const passwordInput = document.getElementById("password");
+const loginBtn = document.getElementById("login-btn");
+
+async function doLogin() {
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+
+  if (!username || !password) {
+    errorBox.textContent = "ກະລຸນາໃສ່ຊື່ຜູ້ໃຊ້ ແລະ ລະຫັດຜ່ານ";
+    errorBox.classList.add("show");
+    return;
+  }
+
+  loginBtn.disabled = true;
+  loginBtn.textContent = "ກຳລັງກວດສອບ...";
+  errorBox.classList.remove("show");
+
+  try {
+    const resp = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.success) {
+      window.location.href = "/";
+    } else {
+      errorBox.textContent = data.error || "ລ໋ອກອິນບໍ່ສຳເລັດ";
+      errorBox.classList.add("show");
+    }
+  } catch (err) {
+    errorBox.textContent = "ເຊື່ອມຕໍ່ບໍ່ສຳເລັດ: " + err.message;
+    errorBox.classList.add("show");
+  } finally {
+    loginBtn.disabled = false;
+    loginBtn.textContent = "ເຂົ້າສູ່ລະບົບ";
+  }
+}
+
+loginBtn.addEventListener("click", doLogin);
+passwordInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") doLogin();
+});
+</script>
+
+</body>
+</html>
