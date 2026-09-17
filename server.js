@@ -5,6 +5,7 @@
 import express from "express";
 import crypto from "crypto";
 import path from "path";
+import cookieParser from "cookie-parser";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -12,9 +13,100 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+
+const COOKIE_SECRET = process.env.COOKIE_SECRET || "please-change-this-secret-in-render";
+app.use(cookieParser(COOKIE_SECRET));
 
 const PORT = process.env.PORT || 3000;
+
+// =================================================================
+// ---------------- ຜູ້ໃຊ້ / login (ຜູກ salesman ຕາມຄົນທີ່ login) ----------------
+// ຕັ້ງລາຍຊື່ຜູ້ໃຊ້ຜ່ານ env var APP_USERS ເປັນ JSON ແບບນີ້ (ບໍ່ຕ້ອງແກ້ໂຄ້ດ):
+//   APP_USERS=[{"username":"linjou","password":"1234","salesman":"Linju_Keoduangdy","display_name":"Linjou"}]
+// ຖ້າບໍ່ຕັ້ງ ຈະໃຊ້ຄ່າຕົວຢ່າງຂ້າງລຸ່ມ — ບໍ່ປອດໄພ, ຄວນປ່ຽນທັນທີຫລັງ deploy
+// =================================================================
+function parseUsersEnv(envVal) {
+  if (!envVal) return null;
+  try {
+    const parsed = JSON.parse(envVal);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+  } catch (err) {
+    console.error("[APP_USERS] JSON ຜິດພາດ, ໃຊ້ຄ່າ default ແທນ:", err.message);
+  }
+  return null;
+}
+
+const USERS =
+  parseUsersEnv(process.env.APP_USERS) || [
+    { username: "linjou", password: "changeme123", salesman: "Linju_Keoduangdy", display_name: "Linjou" },
+  ];
+
+const PUBLIC_PATHS = ["/login.html", "/api/login", "/healthz", "/sw.js"];
+
+function findUserByUsername(username) {
+  return USERS.find((u) => u.username === username) || null;
+}
+
+// ---------------- ຊ່ອງທາງ login / logout / ຂໍ້ມູນຜູ້ໃຊ້ປັດຈຸບັນ ----------------
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body || {};
+  const user = USERS.find((u) => u.username === username && u.password === password);
+
+  if (!user) {
+    return res.status(401).json({ error: "ຊື່ຜູ້ໃຊ້ ຫລື ລະຫັດຜ່ານ ບໍ່ຖືກຕ້ອງ" });
+  }
+
+  res.cookie("session_user", user.username, {
+    signed: true,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: true, // Render ໃຊ້ HTTPS ຢູ່ແລ້ວ
+    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 ມື້
+  });
+
+  return res.status(200).json({
+    success: true,
+    username: user.username,
+    display_name: user.display_name || user.username,
+    salesman: user.salesman || "",
+  });
+});
+
+app.post("/api/logout", (req, res) => {
+  res.clearCookie("session_user");
+  return res.status(200).json({ success: true });
+});
+
+// ---------------- ປະຕູກັ້ນ: ຕ້ອງ login ກ່ອນຈຶ່ງເຂົ້າໜ້າ/API ອື່ນໆໄດ້ ----------------
+app.use((req, res, next) => {
+  if (PUBLIC_PATHS.includes(req.path)) return next();
+
+  const username = req.signedCookies?.session_user;
+  const user = username ? findUserByUsername(username) : null;
+
+  if (user) {
+    req.currentUser = user;
+    return next();
+  }
+
+  if (req.path.startsWith("/api/")) {
+    return res.status(401).json({ error: "ກະລຸນາລ໋ອກອິນກ່ອນ" });
+  }
+  return res.redirect("/login.html");
+});
+
+app.get("/api/me", (req, res) => {
+  const user = req.currentUser;
+  res.status(200).json({
+    username: user.username,
+    display_name: user.display_name || user.username,
+    salesman: user.salesman || "",
+  });
+});
+
+// express.static ຢູ່ຫລັງປະຕູກັ້ນ ເພື່ອໃຫ້ໜ້າ index.html ຖືກປ້ອງກັນນຳ
+// (login.html ຍັງເຂົ້າໄດ້ຢູ່ ເພາະຢູ່ໃນ PUBLIC_PATHS ຂ້າງເທິງ)
+app.use(express.static(path.join(__dirname, "public")));
 
 // =================================================================
 // ---------------- ຄ່າຄົງທີ່ (fixed values) ----------------
@@ -27,7 +119,6 @@ const FIXED_WAREHOUSE = process.env.TRCLOUD_WAREHOUSE || "คลังเซโ�
 // ຕາມທີ່ຮ້ອງຂໍ — ຊ່ອງ project ປ່ອຍຫວ່າງໄວ້
 const FIXED_DEPARTMENT_VALUE =
   process.env.TRCLOUD_DEPARTMENT || "โครงการเซโปน-แท่งคำและนาลู";
-const FIXED_SALESMAN = process.env.TRCLOUD_SALESMAN || "";
 const FIXED_ACCOUNTING_FORMULA =
   process.env.TRCLOUD_ACCOUNTING_FORMULA || "Internal Issue_ค่าวัสดุสิ้นเปลือง";
 const FIXED_STATUS = process.env.TRCLOUD_STATUS || "ขนส่งเสร็จสิ้น";
@@ -37,7 +128,6 @@ app.get("/api/form-options", (req, res) => {
   res.status(200).json({
     warehouse: FIXED_WAREHOUSE,
     department: FIXED_DEPARTMENT_VALUE,
-    salesman: FIXED_SALESMAN,
     accounting_formula: FIXED_ACCOUNTING_FORMULA,
     status: FIXED_STATUS,
   });
@@ -296,13 +386,12 @@ app.post("/api/submit-mr", async (req, res) => {
     transport_status: FIXED_STATUS,
     shipping_status: FIXED_STATUS,
     delivery_status: FIXED_STATUS,
-    name: name || "",
     request_by: request_by || "",
     purpose: purpose || "",
     client_name: name || "",
     client_telephone: "",
     description: "",
-    salesman: FIXED_SALESMAN,
+    salesman: req.currentUser.salesman || "",
     department: FIXED_DEPARTMENT_VALUE,
     project: "",
     warehouse: FIXED_WAREHOUSE,
