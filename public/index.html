@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-<title>ตัดสต๊อก · TRCloud</title>
+<title>ຕັດສະຕ໊ອກ TRCloud</title>
 <script src="/html5-qrcode.min.js" defer></script>
 <style>
   :root {
@@ -445,15 +445,15 @@
 <main>
   <div class="scan-panel">
     <div class="scan-tabs">
-      <button class="scan-tab active" data-mode="camera">📷 ກ້ອງ</button>
-      <button class="scan-tab" data-mode="usb">⌨️ ເຄື່ອງຍິງ USB</button>
+      <button class="scan-tab active" data-mode="camera">📷ໃຊ້ກ້ອງ</button>
+      <button class="scan-tab" data-mode="usb">⌨️ໃຊ້ເຄື່ອງສະແກນ</button>
     </div>
     <div class="scan-body">
       <div id="camera-mode">
         <div id="camera-view"></div>
       </div>
       <div id="usb-mode" class="hidden">
-        <div class="usb-hint">ຍິງບາໂຄດດ້ວຍເຄື່ອງຍິງ USB ໄດ້ເລີຍ (ຊ່ອງນີ້ຮັບຄ່າອັດຕະໂນມັດ) ຫລືພິມ SKU ແລ້ວກົດ Enter</div>
+        <div class="usb-hint">ຍິງບາໂຄດດ້ວຍເຄື່ອງສະແກນ ຫລືພິມ SKU ແລ້ວກົດ Enter</div>
         <input id="usb-input" type="text" placeholder="ຍິງ ຫລື ພິມ SKU..." autocomplete="off" />
       </div>
       <div id="scan-feedback"></div>
@@ -463,7 +463,7 @@
   <div class="info-form">
     <div>
       <label>ຊື່ (name)</label>
-      <input id="f-name" type="text" placeholder="ຊື່ເອກະສານ" />
+      <input id="f-name" type="text" placeholder="ຊື່ຜູ້ຈ່າຍເຄື່ອງ" />
     </div>
     <div>
       <label>ຜູ້ເບີກ (request_by)</label>
@@ -910,7 +910,7 @@ function renderFixedInfo(d) {
   const box = document.getElementById("fixed-info");
   box.innerHTML = `
     ຄັງສິນຄ້າ: <b></b><br>
-    ແຜນກ: <b></b><br>
+    ໂຄງການ: <b></b><br>
     ສູດບັນຊີ: <b></b><br>
     ສະຖານະ: <b></b>
   `;
