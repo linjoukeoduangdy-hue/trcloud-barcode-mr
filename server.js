@@ -1,7 +1,3 @@
-// server.js
-// เว็บแอปตัดสต๊อกด้วยบาร์โค้ด -> TRCloud (สำหรับ deploy บน Render)
-// รวม static frontend (public/index.html) + API routes ไว้ในเซิร์ฟเวอร์เดียว
-
 import express from "express";
 import crypto from "crypto";
 import path from "path";
@@ -19,12 +15,6 @@ app.use(cookieParser(COOKIE_SECRET));
 
 const PORT = process.env.PORT || 3000;
 
-// =================================================================
-// ---------------- ຜູ້ໃຊ້ / login (ຜູກ salesman ຕາມຄົນທີ່ login) ----------------
-// ຕັ້ງລາຍຊື່ຜູ້ໃຊ້ຜ່ານ env var APP_USERS ເປັນ JSON ແບບນີ້ (ບໍ່ຕ້ອງແກ້ໂຄ້ດ):
-//   APP_USERS=[{"username":"linjou","password":"1234","salesman":"Linju_Keoduangdy","display_name":"Linjou"}]
-// ຖ້າບໍ່ຕັ້ງ ຈະໃຊ້ຄ່າຕົວຢ່າງຂ້າງລຸ່ມ — ບໍ່ປອດໄພ, ຄວນປ່ຽນທັນທີຫລັງ deploy
-// =================================================================
 function parseUsersEnv(envVal) {
   if (!envVal) return null;
   try {
@@ -60,8 +50,8 @@ app.post("/api/login", (req, res) => {
     signed: true,
     httpOnly: true,
     sameSite: "lax",
-    secure: true, // Render ໃຊ້ HTTPS ຢູ່ແລ້ວ
-    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 ມື້
+    secure: true,
+    maxAge: 1000 * 60 * 60 * 24 * 30,
   });
 
   return res.status(200).json({
@@ -103,27 +93,15 @@ app.get("/api/me", (req, res) => {
     salesman: user.salesman || "",
   });
 });
-
-// express.static ຢູ່ຫລັງປະຕູກັ້ນ ເພື່ອໃຫ້ໜ້າ index.html ຖືກປ້ອງກັນນຳ
-// (login.html ຍັງເຂົ້າໄດ້ຢູ່ ເພາະຢູ່ໃນ PUBLIC_PATHS ຂ້າງເທິງ)
 app.use(express.static(path.join(__dirname, "public")));
-
-// =================================================================
-// ---------------- ຄ່າຄົງທີ່ (fixed values) ----------------
-// ຄ່າເຫລົ່ານີ້ຖືກ fix ໄວ້ຢູ່ server ແລ້ວ ບໍ່ມີຊ່ອງໃຫ້ເລືອກໃນໜ້າເວັບ
-// ຕ້ອງພິມໃຫ້ "ກົງກັບໃນ TRCloud ຮ້ອຍເປີເຊັນ" (ໂຕພິມນ້ອຍ/ໃຫຍ່, ວັນນະຍຸດ, ຂີດກາງ)
-// ຖ້າຢາກປ່ຽນ ໂດຍບໍ່ຕ້ອງແກ້ໂຄ້ດ ໃຫ້ຕັ້ງ env var ທີ່ກ່ຽວຂ້ອງໃນ Render
 // =================================================================
 const FIXED_WAREHOUSE = process.env.TRCLOUD_WAREHOUSE || "คลังเซโปน";
-// ໝາຍເຫດ: ຄ່ານີ້ຖືກສົ່ງເຂົ້າຊ່ອງ "ແຜນກ (department)" ໃນ TRCloud ບໍ່ແມ່ນຊ່ອງ "ໂຄງການ (project)"
-// ຕາມທີ່ຮ້ອງຂໍ — ຊ່ອງ project ປ່ອຍຫວ່າງໄວ້
 const FIXED_DEPARTMENT_VALUE =
   process.env.TRCLOUD_DEPARTMENT || "โครงการเซโปน-แท่งคำและนาลู";
 const FIXED_ACCOUNTING_FORMULA =
   process.env.TRCLOUD_ACCOUNTING_FORMULA || "Internal Issue_ค่าวัสดุสิ้นเปลือง";
 const FIXED_STATUS = process.env.TRCLOUD_STATUS || "ขนส่งเสร็จสิ้น";
 
-// ສະແດງຄ່າຄົງທີ່ໃຫ້ໜ້າເວັບອ່ານໄປສະແດງ (ອ່ານຢ່າງດຽວ ແກ້ຜ່ານໜ້າເວັບບໍ່ໄດ້)
 app.get("/api/form-options", (req, res) => {
   res.status(200).json({
     warehouse: FIXED_WAREHOUSE,
@@ -134,21 +112,12 @@ app.get("/api/form-options", (req, res) => {
 });
 
 // =================================================================
-// ---------------- ເລກທີ MR (document_number) ----------------
-// ວິທີເກົ່າ (ສ້າງເລກເອງຈາກໄຟລ໌ນັບ) ເຮັດໃຫ້ເລກຊ້ຳກັນ ແລະ ຕັດສະຕ໊ອກບໍ່ໄດ້ ເພາະ:
-//   - Render Free Tier ລ້າງ disk ທຸກຄັ້ງທີ່ redeploy ຕົວນັບຈຶ່ງເລີ່ມ 01 ຄືນໃໝ່
-//   - ຕົວນັບຂອງເຮົາບໍ່ຮູ້ຈັກເລກທີ່ TRCloud ອອກເອງ (ຈາກການສ້າງໃບດ້ວຍມື)
-// ວິທີໃໝ່: ສົ່ງ document_number ເປັນຄ່າຫວ່າງ ໃຫ້ TRCloud ລັນເລກເອງຕໍ່ຈາກລະບົບຂອງມັນ
-// (ໃນໜ້າ TRCloud ຊ່ອງເລກໃບເບີກຕັ້ງເປັນ "number only - AUTO" ຢູ່ແລ້ວ)
-// ຖ້າຢາກກັບໄປໃສ່ເລກເອງ ໃຫ້ຕັ້ງ env var TRCLOUD_DOC_NUMBER_MODE=manual
-// =================================================================
 const DOC_NUMBER_MODE = process.env.TRCLOUD_DOC_NUMBER_MODE || "auto";
 
 function generateDocumentNumber() {
   if (DOC_NUMBER_MODE !== "manual") {
-    return ""; // ໃຫ້ TRCloud ລັນເລກເອງ — ກັນເລກຊ້ຳໄດ້ແນ່ນອນທີ່ສຸດ
+    return ""; 
   }
-  // manual: YYMMDD + HHMMSS + ເລກສຸ່ມ 3 ໂຕ (ໂອກາດຊ້ຳຕ່ຳຫລາຍ ແຕ່ບໍ່ຮັບປະກັນ 100%)
   const now = new Date();
   const p = (n) => String(n).padStart(2, "0");
   const stamp =
@@ -214,7 +183,6 @@ async function callTRCloud(url, payload, { retries = 3, retryDelayMs = 1500 } = 
       try {
         data = JSON.parse(rawText);
       } catch (parseErr) {
-        // แนบ raw response (ตัดให้สั้นลง) ไว้ใน error เพื่อ debug ได้ง่ายขึ้น
         const snippet = rawText.slice(0, 300);
         throw new Error(
           `แปลงผลลัพธ์จาก TRCloud เป็น JSON ไม่ได้ (HTTP ${trResp.status}): ${snippet}`
@@ -233,9 +201,6 @@ async function callTRCloud(url, payload, { retries = 3, retryDelayMs = 1500 } = 
 
   throw lastError;
 }
-
-// ຊື່ຊ່ອງລາຄາທຶນທີ່ TRCloud ອາດໃຊ້ — ລອງຕາມລຳດັບ ເອົາອັນທຳອິດທີ່ມີຄ່າ > 0
-const COST_FIELD_CANDIDATES = [
   "std_cost",
   "standard_cost",
   "average_cost",
@@ -257,8 +222,6 @@ function pickCost(product) {
   }
   return null;
 }
-
-// ຄົ້ນຫາສິນຄ້າ 1 ລາຍການຈາກ TRCloud (ໃຊ້ຮ່ວມກັນລະຫວ່າງ /api/lookup ແລະ /api/submit-mr)
 async function searchProduct(sku) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const secureKey = buildSecureKey(process.env.TRCLOUD_ENCRYPT_HEAD, timestamp);
@@ -294,7 +257,6 @@ app.get("/api/lookup", async (req, res) => {
     }
 
     const cost = pickCost(product);
-    // log ຊື່ຊ່ອງທັງໝົດທີ່ TRCloud ສົ່ງມາ ເພື່ອໃຫ້ຮູ້ວ່າຊ່ອງລາຄາທຶນຊື່ຫຍັງແທ້ (ເບິ່ງໃນ Render > Logs)
     console.log(`[/api/lookup] ${sku} fields:`, Object.keys(product).join(", "));
     console.log(`[/api/lookup] ${sku} cost:`, cost ? `${cost.value} (${cost.field})` : "ບໍ່ພົບ");
 
@@ -328,10 +290,6 @@ app.post("/api/submit-mr", async (req, res) => {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const secureKey = buildSecureKey(process.env.TRCLOUD_ENCRYPT_HEAD, timestamp);
   const today = new Date().toISOString().slice(0, 10);
-
-  // ດຶງລາຄາທຶນຂອງແຕ່ລະລາຍການຈາກ TRCloud ກ່ອນສົ່ງ
-  // (TRCloud ບໍ່ໄດ້ຕື່ມລາຄາໃຫ້ອັດຕະໂນມັດ ຈຶ່ງເຫັນ 0.00 ໃນໃບເບີກ — ຕ້ອງສົ່ງໄປເອງ)
-  // ຖ້າດຶງບໍ່ໄດ້ ຈະປ່ອຍຫວ່າງໄວ້ ແລ້ວປ່ອຍໃຫ້ TRCloud ຈັດການເອງ ບໍ່ໃຫ້ການເບີກລົ້ມເຫລວ
   const productLines = [];
   for (const it of items) {
     let unitCost = it.cost !== undefined && it.cost !== null ? Number(it.cost) : null;
@@ -381,8 +339,6 @@ app.post("/api/submit-mr", async (req, res) => {
     company_format: "MR",
     document_number: generateDocumentNumber(),
     status: FIXED_STATUS,
-    // ລອງຫລາຍຊື່ຊ່ອງ ເພາະບໍ່ຮູ້ແນ່ນອນວ່າ TRCloud ໃຊ້ຊື່ໃດສຳລັບ dropdown "ສະຖານະ" (ຂົນສົ່ງ)
-    // — ຊື່ທີ່ບໍ່ຖືກຈະຖືກ TRCloud ເມີນເສີຍໄປເອງ ບໍ່ເປັນອັນຕະລາຍ
     transport_status: FIXED_STATUS,
     shipping_status: FIXED_STATUS,
     delivery_status: FIXED_STATUS,
@@ -413,8 +369,6 @@ app.post("/api/submit-mr", async (req, res) => {
     return res.status(502).json({ error: `เชื่อมต่อ TRCloud ไม่สำเร็จ: ${err.message}` });
   }
 });
-
-// health check เผื่อ Render ping ตรวจสอบ
 app.get("/healthz", (req, res) => res.status(200).send("ok"));
 
 app.listen(PORT, () => {
