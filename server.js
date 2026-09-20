@@ -207,8 +207,7 @@ async function callTRCloud(url, payload, { retries = 3, retryDelayMs = 1500 } = 
   "avg_cost",
   "cost",
   "price",
-  "unit_price",
-];
+  "unit_price";
 
 function pickCost(product) {
   if (!product) return null;
