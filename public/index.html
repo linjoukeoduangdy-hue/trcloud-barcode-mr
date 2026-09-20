@@ -122,7 +122,7 @@
     flex-direction: column;
     padding: 16px;
     gap: 16px;
-    padding-bottom: 140px; /* กันโดน sticky bar ทับ */
+    padding-bottom: 140px;
   }
 
   /* ---------- Scan panel ---------- */
@@ -505,7 +505,7 @@
 
 <script>
 // ---------------- State ----------------
-let cart = []; // { product_id, product_name, quantity, unit }
+let cart = [];
 
 // ---------------- Tab switching ----------------
 const tabs = document.querySelectorAll(".scan-tab");
@@ -554,11 +554,11 @@ function startCamera() {
 function stopCamera() {
   if (html5QrCode) {
     const instance = html5QrCode;
-    html5QrCode = null; // ປ່ອຍໄວ້ກ່ອນ ເພື່ອບໍ່ໃຫ້ startCamera() ຕິດ guard ຈາກ instance ເກົ່າ
+    html5QrCode = null;
     instance
       .stop()
       .then(() => instance.clear())
-      .catch(() => {}); // ລໍ stop() ໃຫ້ແລ້ວກ່ອນ clear() ຈຶ່ງບໍ່ຂຶ້ນ "Cannot clear while scan is ongoing"
+      .catch(() => {});
   }
 }
 
@@ -595,7 +595,7 @@ function cacheProduct(product) {
 // ---------------- Handle a scanned code ----------------
 let scanning = false;
 async function handleScan(code) {
-  if (scanning) return; // กันยิงซ้ำรัว ๆ ระหว่างรอ lookup
+  if (scanning) return;
   scanning = true;
   showFeedback("ok", `ກຳລັງກວດ "${code}" ...`);
 
@@ -643,7 +643,7 @@ function addToCart(product, verified) {
   const existing = cart.find((it) => it.product_id === product.product_id);
   if (existing) {
     existing.quantity += 1;
-    if (verified) existing.verified = true; // ຖ້າຢືນຢັນຄືນຕອນມີເນັດ ອັບເດດໃຫ້ຖືກ
+    if (verified) existing.verified = true;
   } else {
     cart.push({
       product_id: product.product_id,
@@ -683,8 +683,6 @@ function renderCart() {
   submitBtn.disabled = cart.length === 0;
 
   if (cart.length === 0) {
-    // ສ້າງ empty-state ຂຶ້ນໃໝ່ທຸກຄັ້ງ ແທນທີ່ຈະອີງໃສ່ node ເກົ່າທີ່ອາດຖືກລົບໄປແລ້ວ
-    // ໂດຍ innerHTML = "" ຄັ້ງກ່ອນໜ້າ (ນັ້ນຄືສາເຫດຂອງ appendChild(null) error)
     list.innerHTML = `<div class="cart-empty" id="cart-empty">ຍັງບໍ່ມີລາຍການ — ເລີ່ມຍິງບາໂຄດເບື້ອງເທິງ</div>`;
     return;
   }
@@ -749,8 +747,6 @@ function showToast(type, message) {
   el.className = `show ${type}`;
   setTimeout(() => { el.className = ""; }, 4000);
 }
-
-// ສົ່ງໄປ /api/submit-mr — ໃຊ້ຮ່ວມກັນລະຫວ່າງການສົ່ງໂດຍກົງ ແລະ ການສົ່ງຄິວທີ່ຄ້າງໄວ້
 async function postSubmitMR(payload) {
   try {
     const resp = await fetch("/api/submit-mr", {
@@ -784,16 +780,13 @@ async function flushQueue() {
     const result = await postSubmitMR(item.payload);
 
     if (result.networkError) {
-      break; // ยังออฟไลน์อยู่จริง — เลิกลอง ไว้รอบหน้า
-    }
-
-    if (result.sessionExpired) {
-      // session ໝົດອາຍຸ — ຄ້າງລາຍການໄວ້ໃນຄິວ (ບໍ່ລົບ) ແລ້ວໃຫ້ login ໃໝ່ກ່ອນ ຈະສົ່ງຄືນຄັ້ງຕໍ່ໄປ
-      window.location.href = "/login.html";
       break;
     }
 
-    // ไม่ว่าจะสำเร็จหรือ TRCloud ปฏิเสธ ก็นำออกจากคิว (ส่งซ้ำเหมือนเดิมจะไม่ทำให้ผลต่างไปจากเดิม)
+    if (result.sessionExpired) {
+      window.location.href = "/login.html";
+      break;
+    }
     saveQueue(getQueue().filter((q) => q.id !== item.id));
 
     if (result.ok && result.data.success === 1) {
@@ -804,7 +797,7 @@ async function flushQueue() {
         "ລາຍການທີ່ຄ້າງໄວ້ສົ່ງບໍ່ສຳເລັດ",
         `ຜູ້ເບີກ: ${item.payload.request_by || "-"} — ${result.data?.message || result.data?.error || "TRCloud ປະຕິເສດ"}`
       );
-      break; // หยุดไว้ให้ผู้ใช้เห็น ไม่ยิงต่อจนล้นกันไปหมด
+      break;
     }
   }
 
@@ -947,7 +940,6 @@ async function loadCurrentUser() {
   try {
     const resp = await fetch("/api/me");
     if (resp.status === 401) {
-      // session ໝົດອາຍຸ ຫລືຍັງບໍ່ login ແທ້ — ສົ່ງໄປໜ້າ login
       window.location.href = "/login.html";
       return;
     }
@@ -955,7 +947,6 @@ async function loadCurrentUser() {
     localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data));
     document.getElementById("user-name").textContent = `👤 ${data.display_name}`;
   } catch (err) {
-    // ອອບລາຍ — ບໍ່ຮູ້ວ່າ session ຍັງໃຊ້ໄດ້ບໍ, ໃຫ້ໃຊ້ຄ່າແຄຊ໌ໄວ້ສະແດງ ບໍ່ redirect ຫນີໄປ
     try {
       const cached = JSON.parse(localStorage.getItem(USER_CACHE_KEY));
       if (cached) {
@@ -977,8 +968,6 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
 loadCurrentUser();
 loadFixedInfo();
 updateNetStatus();
-
-// html5-qrcode ຖືກໂຫລດແບບ defer (ບໍ່ບລັອກໜ້າເວັບ) — ຕ້ອງລໍໃຫ້ໂຫລດແລ້ວກ່ອນຈຶ່ງເອີ້ນ startCamera()
 if (typeof Html5Qrcode !== "undefined") {
   startCamera();
 } else {
