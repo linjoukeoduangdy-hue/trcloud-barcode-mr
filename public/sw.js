@@ -1,10 +1,11 @@
 // sw.js — ໃຫ້ໜ້າເວັບເປີດໄດ້ໄວ (ຈາກແຄຊ໌ກ່ອນສະເໝີ) ແລະ ຍັງໃຊ້ໄດ້ເຖິງແມ່ນບໍ່ມີອິນເຕີເນັດເລີຍ
 // (ຫລັງຈາກເຄີຍເປີດຄັ້ງໜຶ່ງຕອນມີເນັດແລ້ວ) — /api/* ບໍ່ຖືກແຄຊ໌ ເພາະຕ້ອງການຂໍ້ມູນສົດສະເໝີ
 
-const CACHE_NAME = "trcloud-mr-shell-v2";
+const CACHE_NAME = "trcloud-mr-shell-v3";
 const SHELL_FILES = [
   "/",
   "/index.html",
+  "/login.html",
   "/html5-qrcode.min.js",
 ];
 
@@ -27,13 +28,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // /api/*, /login.html ແລະ ຄຳຂໍທີ່ບໍ່ແມ່ນ GET: ໄປ network ໂດຍກົງສະເໝີ ບໍ່ແຄຊ໌
-  // (login ຕ້ອງກວດ session ສົດສະເໝີ — ຄ້າງໜ້າ login ເກົ່າໄວ້ຈະເປັນບັນຫາ)
-  if (
-    url.pathname.startsWith("/api/") ||
-    url.pathname === "/login.html" ||
-    event.request.method !== "GET"
-  ) {
+  // /api/* ແລະ ຄຳຂໍທີ່ບໍ່ແມ່ນ GET: ໄປ network ໂດຍກົງສະເໝີ ບໍ່ແຄຊ໌
+  // (login.html ເອງແຄຊ໌ໄດ້ປອດໄພ — ມັນບໍ່ກວດ session ຕອນໂຫລດ, ກວດແຕ່ຕອນກົດປຸ່ມ login ເທົ່ານັ້ນ)
+  if (url.pathname.startsWith("/api/") || event.request.method !== "GET") {
     return; // ບໍ່ເອີ້ນ respondWith — ປ່ອຍໃຫ້ browser ຈັດການແບບປົກກະຕິ
   }
 
