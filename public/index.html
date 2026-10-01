@@ -993,10 +993,11 @@ async function loadCurrentUser() {
   }
 }
 
-document.getElementById("logout-btn").addEventListener("click", async () => {
-  try {
-    await fetch("/api/logout", { method: "POST" });
-  } catch {}
+document.getElementById("logout-btn").addEventListener("click", () => {
+  // ບໍ່ລໍ (await) ຄຳຕອບຈາກ server ອີກຕໍ່ໄປ — ອັນນີ້ຄືຈຸດທີ່ເຮັດໃຫ້ອອກລະບົບຊ້າ/ຄ້າງ
+  // ໂດຍສະເພາະຕອນ Render ກຳລັງນອນຫລັບ ຫລື ເນັດມືຖືອ່ອນ (fetch ອາດລໍດົນຫລາຍວິນາທີ)
+  // keepalive: true ຮັບປະກັນວ່າ request ຍັງຖືກສົ່ງຄົບ ເຖິງແມ່ນໜ້າຈະປ່ຽນໄປແລ້ວ
+  fetch("/api/logout", { method: "POST", keepalive: true }).catch(() => {});
   localStorage.removeItem(USER_CACHE_KEY);
   window.location.href = "/login.html";
 });
